@@ -71,6 +71,11 @@ tf.flags.DEFINE_integer(
 	"Sequence length"
 )
 tf.flags.DEFINE_string(
+	"pad",
+	"right",
+	"Direction for padding in input sequence"
+)
+tf.flags.DEFINE_string(
 	"out_dir",
 	"askubunturuns",
 	"Directory for saving summaries and checkpoints"

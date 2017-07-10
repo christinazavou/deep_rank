@@ -1,18 +1,26 @@
 import os
 import scipy
 import numpy as np
+import gzip
 from deep_rank.texts_parse import parse
 
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
-q_file_name = os.path.join(this_dir, 'askubuntu_data', 'texts_raw_fixed.txt')
+q_file_name = os.path.join(this_dir, 'askubuntu_data', 'texts_raw_fixed.txt.gz')
 test_file_name = os.path.join(this_dir, 'askubuntu_data', 'test.txt')
 dev_file_name = os.path.join(this_dir, 'askubuntu_data', 'dev.txt')
 train_file_name = os.path.join(this_dir, 'askubuntu_data', 'train_random.txt')
 
 
+def f_open(x):
+    if x.endswith(".gz"):
+        return gzip.open(x)
+    else:
+        return open(x)
+
+
 def read_questions(filename=q_file_name):
-	with open(filename) as f:
+	with f_open(filename) as f:
 		questions = f.readlines()
 		for line in questions:
 			q_id, q_title, q_body = line.decode('utf-8').split(u'\t')
@@ -21,7 +29,7 @@ def read_questions(filename=q_file_name):
 
 
 def read_rows(ttt='train', filename=train_file_name):
-	with open(filename) as f:
+	with f_open(filename) as f:
 		questions = f.readlines()
 
 		if ttt == 'train':
