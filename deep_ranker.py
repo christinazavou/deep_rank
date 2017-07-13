@@ -1,12 +1,12 @@
 import tensorflow as tf
-from askubuntu.model_helpers import cosine_distance, batch_max_margin_loss
+from deep_rank.model_helpers import cosine_distance, batch_max_margin_loss
 
 
 class TextCNN(object):
 
     def __init__(
-			self, sequence_length, num_classes, vocab_size,
-			embedding_size, filter_sizes, num_filters, margin=0.009):
+			self, sequence_length, vocab_size, embedding_size, filter_sizes,
+			num_filters, trained_embeddings, train_embeddings, margin=0.009):
 
     	# Q
 		self.input_x = tf.placeholder(
@@ -27,8 +27,11 @@ class TextCNN(object):
 		    W = tf.get_variable(
 		    	name="W",
 		        initializer=tf.random_uniform(
-		        	[vocab_size, embedding_size], -1.0, 1.0)
+		        	[vocab_size, embedding_size], -1.0, 1.0),
+		        trainable=train_embeddings
 		    )
+		    if trained_embeddings is not None:
+		    	W = tf.assign(W, trained_embeddings)
 		    with tf.name_scope("embedding_x1"):
 			    self.embedded_chars1 = tf.nn.embedding_lookup(W, self.input_x1)
 			    self.embedded_chars1_expanded = tf.expand_dims(self.embedded_chars1, -1)

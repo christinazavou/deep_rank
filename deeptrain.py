@@ -4,10 +4,9 @@ import os
 import time
 import numpy as np
 import datetime
-from askubuntu.main import triples
-from askubuntu.deepranker import TextCNN
-from askubuntu.cnn_config import FLAGS
-from askubuntu.data_helpers import batch_iter
+from deep_rank.deep_ranker import TextCNN
+from deep_rank.cnn_config import FLAGS
+from deep_rank import load_data_utils
 
 
 def total_parameters():
@@ -24,72 +23,25 @@ def total_parameters():
 
 this_dir = os.path.dirname(os.path.realpath(__file__))
 
-x_train, x_dev = triples()
-train_batches = batch_iter(
-    x_train,
+X, w2i = load_data_utils.train_data_triples(
+    title_body=11,
+    vocabulary_size=FLAGS.vocabulary_size,
+    sequence_length=FLAGS.sequence_length,
+    pad=FLAGS.pad
+)
+
+trained_dict, trained_embedding_mat = load_data_utils.read_vocabulary()
+embedding_mat = load_data_utils.get_embedding_mat(
+    trained_dict, trained_embedding_mat, w2i)
+vocab_size = len(w2i.keys())
+del trained_dict, trained_embedding_mat, w2i
+
+train_batches = load_data_utils.batch_iter(
+    X,
     FLAGS.batch_size,
     FLAGS.num_epochs,
     shuffle=True
 )
-
-# metagraphfile = os.path.join(
-#     this_dir.replace('askubuntu', 'askubunturuns'),
-#     '1499423611', 'checkpoints', 'model-5400.meta'
-# )
-# embeddingW = None
-# convmaxpool2W, convmaxpool3W, convmaxpool4W = None, None, None
-# convmaxpool2b, convmaxpool3b, convmaxpool4b = None, None, None
-# if os.path.isfile(metagraphfile):
-#     with tf.Session() as sess:
-#         saver = tf.train.import_meta_graph(metagraphfile)
-#         saver.restore(sess, metagraphfile.replace('.meta', ''))
-#         graph = tf.get_default_graph()
-
-#         embeddingW = graph.get_tensor_by_name('embedding/W:0')
-#         convmaxpool2W = graph.get_tensor_by_name('conv-maxpool-2/W:0')
-#         convmaxpool3W = graph.get_tensor_by_name('conv-maxpool-3/W:0')
-#         convmaxpool4W = graph.get_tensor_by_name('conv-maxpool-4/W:0')
-#         convmaxpool2b = graph.get_tensor_by_name('conv-maxpool-2/b:0')
-#         convmaxpool3b = graph.get_tensor_by_name('conv-maxpool-3/b:0')
-#         convmaxpool4b = graph.get_tensor_by_name('conv-maxpool-4/b:0')
-
-
-# metagraphfile = os.path.join(
-#     this_dir.replace('askubuntu', 'askubunturuns'),
-#     '1499423611', 'checkpoints', 'model-5400.meta'
-# )
-# if os.path.isfile(metagraphfile):
-#     with tf.Session() as sess:
-#         # create the network
-#         saver = tf.train.import_meta_graph(metagraphfile)
-#         # import_meta_graph appends the network defined in .meta file
-#         # to the current graph => creates the graph/network for you but
-#         # we still need to load the value of the parameters that we had
-#         # trained on this graph.
-
-#         # load the parameters
-#         saver.restore(sess, metagraphfile.replace('.meta', ''))
-#         # # Access saved Variables directly
-#         graph = tf.get_default_graph()
-#         # print [n.name for n in graph.as_graph_def().node]
-#         # print graph.get_tensor_by_name('conv-maxpool-4/b:0')
-#         # note: without ":0" it identifies operation
-#         x = graph.get_tensor_by_name('input_x:0')
-#         x1 = graph.get_tensor_by_name('input_x1:0')
-#         x2 = graph.get_tensor_by_name('input_x2:0')
-#         dropout = graph.get_tensor_by_name('dropout_keep_prob:0')
-#         accuracy = graph.get_operation_by_name('accuracy/accuracy')
-
-#         for x_batch in train_batches:
-#             feed_dict = {
-#                 x: np.asarray([xi[0] for xi in x_batch]),
-#                 x1: np.asarray([xi[1] for xi in x_batch]),
-#                 x2: np.asarray([xi[2] for xi in x_batch]),
-#                 dropout: 1.0
-#             }
-#             acc = sess.run([accuracy], feed_dict)
-#             print("accuracy: {} ".format(acc))
-#             break
 
 with tf.Graph().as_default():
     savegraph = True
@@ -100,12 +52,14 @@ with tf.Graph().as_default():
     with sess.as_default():
 
         cnn = TextCNN(
-            sequence_length=FLAGS.sequence_length,
-            num_classes=1,
-            vocab_size=FLAGS.vocabulary_size + 1,
+            sequence_length=len(X[0][0]),
+            vocab_size=vocab_size,
             embedding_size=FLAGS.embedding_dim,
             filter_sizes=list(map(int, FLAGS.filter_sizes.split(","))),
-            num_filters=FLAGS.num_filters)
+            num_filters=FLAGS.num_filters,
+            trained_embeddings=embedding_mat,
+            train_embeddings=True
+        )
 
         # Define Training procedure
         global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -115,12 +69,10 @@ with tf.Graph().as_default():
         	grads_and_vars, global_step=global_step)
 
         print 'total params: ', total_parameters()
-        exit()
 
         # Output directory for models and summaries
         timestamp = str(int(time.time()))
-        out_dir = os.path.abspath(
-        	os.path.join(os.path.curdir, FLAGS.out_dir, timestamp))
+        out_dir = os.path.join(this_dir, FLAGS.out_dir, timestamp)
         print("Writing to {}\n".format(out_dir))
 
         # Summaries for loss and accuracy
@@ -166,19 +118,6 @@ with tf.Graph().as_default():
                 cnn.input_x2: np.asarray([x[1] for x in x_batch]),
             	cnn.dropout_keep_prob: FLAGS.dropout_keep_prob
             }
-            # similarity1, similarity2, similarities, predictions, \
-            #     correct_predictions =\
-            #     sess.run(
-            #         [cnn.similarity1, cnn.similarity2, cnn.similarities,
-            #          cnn.predictions, cnn.correct_predictions],
-            #         feed_dict
-            #     )
-            # print ' similarity 1 ', similarity1, ' \n'
-            # print ' similarity 2 ', similarity2, ' \n'
-            # print ' similarities ', similarities, ' \n'
-            # print ' predictions ', predictions, ' \n'
-            # print ' correct predictions ', correct_predictions, ' \n'
-            # exit()
 
             _, step, summaries, loss, accuracy = sess.run(
                 [train_op, global_step, train_summary_op,
@@ -232,10 +171,10 @@ with tf.Graph().as_default():
         for x_batch in train_batches:
             train_step(x_batch)
             current_step = tf.train.global_step(sess, global_step)
-            if current_step % FLAGS.evaluate_every == 0:
-                print("\nEvaluation:")
-                dev_step(x_dev)  #, writer=dev_summary_writer)
-                print("")
+            # if current_step % FLAGS.evaluate_every == 0:
+            #     print("\nEvaluation:")
+            #     dev_step(x_dev)  #, writer=dev_summary_writer)
+            #     print("")
             if current_step % FLAGS.checkpoint_every == 0:
                 # remember that Tensorflow variables are only alive
                 # inside a session so => save the model inside a session

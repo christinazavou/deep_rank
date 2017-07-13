@@ -8,10 +8,16 @@ from deep_rank.cnn_config import FLAGS
 
 if __name__ == '__main__':
 
-	X, num_words = train_data_triples(
+	# X, num_words = train_data_triples(
+	# 	vocabulary_size=FLAGS.vocabulary_size,
+	# 	sequence_length=FLAGS.sequence_length,
+	# 	pad=FLAGS.pad)
+	X, embedding_mat = train_data_triples(
 		vocabulary_size=FLAGS.vocabulary_size,
 		sequence_length=FLAGS.sequence_length,
 		pad=FLAGS.pad)
+	print X.shape
+	print embedding_mat.shape
 
 	x_train, x_dev = split_data(X, FLAGS.dev_sample_percentage)
 

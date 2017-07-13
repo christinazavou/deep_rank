@@ -62,7 +62,8 @@ tf.flags.DEFINE_boolean(
 )
 tf.flags.DEFINE_integer(
 	"vocabulary_size",
-	262144,  # i.e. 2e18
+	200000,
+	# 262144,  # i.e. 2e18
 	"Vocbulary size"
 )
 tf.flags.DEFINE_integer(
@@ -77,7 +78,7 @@ tf.flags.DEFINE_string(
 )
 tf.flags.DEFINE_string(
 	"out_dir",
-	"askubunturuns",
+	"askubuntu_runs",
 	"Directory for saving summaries and checkpoints"
 )
 
