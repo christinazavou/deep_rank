@@ -6,6 +6,12 @@ import time
 import tensorflow as tf
 import numpy as np
 import os
+from evaluation import Evaluation
+from nn import get_activation_by_name
+import gzip
+import pickle
+from prettytable import PrettyTable
+from myio import say
 
 
 class Model(object):
@@ -41,7 +47,9 @@ class Model(object):
             )
 
             def lstm_cell():
-                _cell = tf.nn.rnn_cell.LSTMCell(self.args.hidden_dim, state_is_tuple=True)
+                _cell = tf.nn.rnn_cell.LSTMCell(
+                    self.args.hidden_dim, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
+                )
                 # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
                 return _cell
 
@@ -112,8 +120,50 @@ class Model(object):
         l2 = tf.norm(x, ord=2, axis=2, keep_dims=True)
         return x / (l2 + eps)
 
-    def train_model(self, train_batches, dev=None, test=None):
+    def eval_model(self, dev, sess):
+        res = []
+        losses = []
+
+        def eval_batch(titles, bodies, labels):
+            _current_state = np.zeros((args.depth, 2, titles.T.shape[0], args.hidden_dim))
+            _loss, _scores = sess.run(
+                [self.loss, self.scores],
+                feed_dict={
+                    self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
+                    self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
+                    self.pairs_ids_placeholder: np.reshape(labels, (1, labels.shape[0])),
+                    self.dropout_prob: 0.,
+                    self.init_state: _current_state
+                }
+            )
+            losses.append(_loss)
+            return _scores
+
+        for idts, idbs, id_labels in dev:
+            cur_scores = eval_batch(idts, idbs, id_labels)
+            assert len(id_labels) == len(cur_scores)
+            ranks = (-cur_scores).argsort()
+            ranked_labels = id_labels[ranks]
+            res.append(ranked_labels)
+
+        print ' avg.loss ', sum(losses) / len(losses)
+
+        e = Evaluation(res)
+        MAP = round(e.MAP(), 4)
+        MRR = round(e.MRR(), 4)
+        P1 = round(e.Precision(1), 4)
+        P5 = round(e.Precision(5), 4)
+        return MAP, MRR, P1, P5
+
+    def train_model(self, train_batches, dev=None, test=None, assign_ops=None):
         with tf.Session() as sess:
+
+            result_table = PrettyTable(
+                ["Epoch", "dev MAP", "dev MRR", "dev P@1", "dev P@5", "tst MAP", "tst MRR", "tst P@1", "tst P@5"]
+            )
+            dev_MAP = dev_MRR = dev_P1 = dev_P5 = 0
+            test_MAP = test_MRR = test_P1 = test_P5 = 0
+            best_dev = -1
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -122,18 +172,22 @@ class Model(object):
             train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
             sess.run(tf.global_variables_initializer())
+            if assign_ops:
+                print 'assigning trained values ...\n'
+                sess.run(assign_ops)
 
-            print("Writing to {}\n".format(args.save_dir))
+            if args.save_dir != "":
+                print("Writing to {}\n".format(args.save_dir))
             # Train Summaries
             train_summary_op = tf.summary.scalar("loss", self.loss)
             train_summary_dir = os.path.join(args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
-            checkpoint_dir = os.path.join(args.save_dir, "checkpoints")
-            checkpoint_prefix = os.path.join(checkpoint_dir, "model")
-            if not os.path.exists(checkpoint_dir):
-                os.makedirs(checkpoint_dir)
-            saver = tf.train.Saver(tf.global_variables(), max_to_keep=3)
+            if args.save_dir != "":
+                checkpoint_dir = os.path.join(args.save_dir, "checkpoints")
+                checkpoint_prefix = os.path.join(checkpoint_dir, "model")
+                if not os.path.exists(checkpoint_dir):
+                    os.makedirs(checkpoint_dir)
 
             unchanged = 0
             max_epoch = args.max_epoch
@@ -150,7 +204,7 @@ class Model(object):
                 def train_batch(titles, bodies, pairs):
                     _current_state = np.zeros((args.depth, 2, titles.T.shape[0], args.hidden_dim))  # CURRENT_STATE DEPENDS ON BATCH
 
-                    _, step, _loss, _summary = sess.run(
+                    _, _step, _loss, _summary = sess.run(
                         [train_op, global_step, self.loss, train_summary_op],
                         feed_dict={
                             self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
@@ -161,34 +215,74 @@ class Model(object):
                         }
                     )
 
-                    return _loss
-
-                def eval_batch(titles, bodies, pairs):
-                    _current_state = np.zeros((args.depth, 2, titles.T.shape[0], args.hidden_dim))  # CURRENT_STATE DEPENDS ON BATCH
-
-                    _, step, _loss, _summary = sess.run(
-                        [train_op, global_step, self.loss, train_summary_op],
-                        feed_dict={
-                            self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
-                            self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
-                            self.pairs_ids_placeholder: pairs,
-                            self.dropout_prob: 0.,
-                            self.init_state: _current_state
-                        }
-                    )
-
-                    return _loss
+                    return _step, _loss
 
                 for i in xrange(N):
                     idts, idbs, idps = train_batches[i]
-                    cur_loss = train_batch(idts, idbs, idps)
-                    print '  loss ', cur_loss
+                    cur_step, cur_loss = train_batch(idts, idbs, idps)
 
                     train_loss += cur_loss
                     # todo cost
 
                     if i % 10 == 0:
                         myio.say("\r{}/{}".format(i, N))
+
+                    if i == N-1:  # EVAL
+                        if dev:
+                            dev_MAP, dev_MRR, dev_P1, dev_P5 = self.eval_model(dev, sess)
+                        if test:
+                            test_MAP, test_MRR, test_P1, test_P5 = self.eval_model(test, sess)
+
+                        if dev_MRR > best_dev:
+                            unchanged = 0
+                            best_dev = dev_MRR
+                            result_table.add_row(
+                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
+                            )
+                            if args.save_model:
+                                self.save(sess, checkpoint_prefix, cur_step)
+
+                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tMRR={:.2f},{:.2f}\n").format(
+                            epoch,
+                            0.,
+                            train_loss / (i+1),
+                            dev_MRR,
+                            best_dev
+                        )
+                        say("\n{}\n".format(result_table))
+
+    def save(self, sess, path, step):
+        path = "{}_{}_{}".format(path, step, ".pkl.gz")
+        print("Saving model checkpoint to {}\n".format(path))
+        params = tf.trainable_variables()
+        params_dict = {}
+        for param in params:
+            params_dict[param.name] = sess.run(param)
+        # print 'params_dict\n', params_dict
+        with gzip.open(path, "w") as fout:
+            pickle.dump(
+                {
+                    "params_dict": params_dict,
+                    "args": self.args,
+                    "step": step
+                },
+                fout,
+                protocol=pickle.HIGHEST_PROTOCOL
+            )
+
+    def load_trained_vars(self, path):
+        print("Loading model checkpoint from {}\n".format(path))
+        assign_ops = []
+        with gzip.open(path) as fin:
+            data = pickle.load(fin)
+            assert self.args == data['args'], 'some different args:\n{}'.format(self.args)
+            params_dict = data['params_dict']
+            graph = tf.get_default_graph()
+            for param_name, param_value in params_dict.iteritems():
+                variable = graph.get_tensor_by_name(param_name)
+                assign_op = tf.assign(variable, param_value)
+                assign_ops.append(assign_op)
+        return assign_ops
 
 
 def main(args):
@@ -209,6 +303,13 @@ def main(args):
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
         dev = myio.create_eval_batches(ids_corpus, dev, padding_id, pad_left=not args.average)
+    if args.test:
+        test = myio.read_annotations(args.test, K_neg=-1, prune_pos_cnt=-1)
+        test = myio.create_eval_batches(ids_corpus, test, padding_id, pad_left=not args.average)
+
+    model = Model(args, embedding_layer)
+
+    assign_ops = model.load_trained_vars(args.load_pretrain) if args.load_pretrain else None
 
     if args.train:
         start_time = time.time()
@@ -223,8 +324,12 @@ def main(args):
                 sum(len(x[2].ravel()) for x in train_batches)
             ))
 
-        model = Model(args, embedding_layer)
-        model.train_model(train_batches)
+        model.train_model(
+            train_batches,
+            dev=dev if args.dev else None,
+            test=test if args.test else None,
+            assign_ops=assign_ops
+        )
 
 
 if __name__ == "__main__":
