@@ -99,12 +99,20 @@ class Model(object):
             # num query
             neg_scores = tf.reduce_max(neg_scores, axis=1)
 
-        with tf.name_scope('loss'):
-            diff = neg_scores - pos_scores + 1.0
-            loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
-            self.loss = loss
+        with tf.name_scope('cost'):
 
-            # todo: calculate cost
+            with tf.name_scope('loss'):
+                diff = neg_scores - pos_scores + 1.0
+                loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
+                self.loss = loss
+
+            with tf.name_scope('regularization'):
+                l2_reg = 0.
+                for param in tf.trainable_variables():
+                    l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
+                self.l2_reg = l2_reg
+
+            self.cost = self.loss + self.l2_reg
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):
@@ -167,8 +175,8 @@ class Model(object):
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
-            optimizer = tf.train.AdamOptimizer(1e-3)
-            grads_and_vars = optimizer.compute_gradients(self.loss)
+            optimizer = tf.train.AdamOptimizer(args.learning_rate)
+            grads_and_vars = optimizer.compute_gradients(self.cost)
             train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
             sess.run(tf.global_variables_initializer())
@@ -178,8 +186,13 @@ class Model(object):
 
             if args.save_dir != "":
                 print("Writing to {}\n".format(args.save_dir))
+
+            # Summaries for loss and cost
+            loss_summary = tf.summary.scalar("loss", self.loss)
+            cost_summary = tf.summary.scalar("cost", self.cost)
+
             # Train Summaries
-            train_summary_op = tf.summary.scalar("loss", self.loss)
+            train_summary_op = tf.summary.merge([loss_summary, cost_summary])
             train_summary_dir = os.path.join(args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
@@ -199,13 +212,13 @@ class Model(object):
                 N = len(train_batches)
 
                 train_loss = 0.0
-                # todo cost
+                train_cost = 0.0
 
                 def train_batch(titles, bodies, pairs):
                     _current_state = np.zeros((args.depth, 2, titles.T.shape[0], args.hidden_dim))  # CURRENT_STATE DEPENDS ON BATCH
 
-                    _, _step, _loss, _summary = sess.run(
-                        [train_op, global_step, self.loss, train_summary_op],
+                    _, _step, _loss, _cost, _summary = sess.run(
+                        [train_op, global_step, self.loss, self.cost, train_summary_op],
                         feed_dict={
                             self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                             self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
@@ -215,14 +228,14 @@ class Model(object):
                         }
                     )
 
-                    return _step, _loss
+                    return _step, _loss, _cost
 
                 for i in xrange(N):
                     idts, idbs, idps = train_batches[i]
-                    cur_step, cur_loss = train_batch(idts, idbs, idps)
+                    cur_step, cur_loss, cur_cost = train_batch(idts, idbs, idps)
 
                     train_loss += cur_loss
-                    # todo cost
+                    train_cost += cur_cost
 
                     if i % 10 == 0:
                         myio.say("\r{}/{}".format(i, N))
@@ -239,16 +252,16 @@ class Model(object):
                             result_table.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
-                            if args.save_model:
+                            if args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
-                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tMRR={:.2f},{:.2f}\n").format(
+                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tMRR={:.2f},{:.2f}\n".format(
                             epoch,
-                            0.,
-                            train_loss / (i+1),
+                            train_cost / (i+1),  # i.e. divided by N training batches
+                            train_loss / (i+1),  # i.e. divided by N training batches
                             dev_MRR,
                             best_dev
-                        )
+                        ))
                         say("\n{}\n".format(result_table))
 
     def save(self, sess, path, step):
@@ -346,7 +359,7 @@ if __name__ == "__main__":
 
     argparser.add_argument("--average", type=int, default=0)
     argparser.add_argument("--batch_size", type=int, default=40)
-    argparser.add_argument("--learning", type=str, default="adam")
+    # argparser.add_argument("--learning", type=str, default="adam")
     argparser.add_argument("--learning_rate", type=float, default=0.001)
     argparser.add_argument("--l2_reg", type=float, default=1e-5)
     argparser.add_argument("--activation", "-act", type=str, default="tanh")
@@ -354,7 +367,7 @@ if __name__ == "__main__":
     argparser.add_argument("--dropout", type=float, default=0.0)
     argparser.add_argument("--max_epoch", type=int, default=50)
     argparser.add_argument("--normalize", type=int, default=1)
-    argparser.add_argument("--reweight", type=int, default=1)
+    # argparser.add_argument("--reweight", type=int, default=1)
 
     argparser.add_argument("--load_pretrain", type=str, default="")
 
