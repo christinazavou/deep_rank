@@ -128,14 +128,13 @@ class Model(object):
         l2 = tf.norm(x, ord=2, axis=2, keep_dims=True)
         return x / (l2 + eps)
 
-    def eval_model(self, dev, sess):
+    def evaluate(self, data, sess):
         res = []
-        losses = []
 
         def eval_batch(titles, bodies, labels):
-            _current_state = np.zeros((args.depth, 2, titles.T.shape[0], args.hidden_dim))
-            _loss, _scores = sess.run(
-                [self.loss, self.scores],
+            _current_state = np.zeros((args.depth, 2, titles.T.shape[0], args.hidden_dim))  # CURRENT_STATE DEPENDS ON BATCH
+            _scores = sess.run(
+                self.scores,
                 feed_dict={
                     self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                     self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
@@ -144,17 +143,14 @@ class Model(object):
                     self.init_state: _current_state
                 }
             )
-            losses.append(_loss)
             return _scores
 
-        for idts, idbs, id_labels in dev:
+        for idts, idbs, id_labels in data:
             cur_scores = eval_batch(idts, idbs, id_labels)
             assert len(id_labels) == len(cur_scores)
             ranks = (-cur_scores).argsort()
             ranked_labels = id_labels[ranks]
             res.append(ranked_labels)
-
-        print ' avg.loss ', sum(losses) / len(losses)
 
         e = Evaluation(res)
         MAP = round(e.MAP(), 4)
@@ -227,7 +223,7 @@ class Model(object):
                             self.init_state: _current_state
                         }
                     )
-
+                    train_summary_writer.add_summary(_summary, _step)
                     return _step, _loss, _cost
 
                 for i in xrange(N):
@@ -242,9 +238,9 @@ class Model(object):
 
                     if i == N-1:  # EVAL
                         if dev:
-                            dev_MAP, dev_MRR, dev_P1, dev_P5 = self.eval_model(dev, sess)
+                            dev_MAP, dev_MRR, dev_P1, dev_P5 = self.evaluate(dev, sess)
                         if test:
-                            test_MAP, test_MRR, test_P1, test_P5 = self.eval_model(test, sess)
+                            test_MAP, test_MRR, test_P1, test_P5 = self.evaluate(test, sess)
 
                         if dev_MRR > best_dev:
                             unchanged = 0
