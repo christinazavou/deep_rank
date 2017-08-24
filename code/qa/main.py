@@ -19,6 +19,7 @@ class Model(object):
     def __init__(self, args, embedding_layer):
         self.args = args
         self.embeddings = embedding_layer.embeddings
+        self.padding_id = embedding_layer.vocab_map["<padding>"]
         self._initialize_graph()
 
     def _initialize_graph(self):
@@ -60,22 +61,30 @@ class Model(object):
         with tf.name_scope('titles_output'):
             self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(cell, self.titles, initial_state=rnn_tuple_state)
             # current_state = last state of every layer in the network as an LSTMStateTuple
-            # if self.normalize:
-            #     self.t_state = self.normalize_3d(self.t_state)
+
+            if self.args.normalize:
+                self.t_states_series = self.normalize_3d(self.t_states_series)
+
             if self.args.average:
-                self.t_state = self.t_current_state[-1][1]  # todo the average
+                self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
             else:
-                self.t_state = self.t_current_state[-1][1]
+                self.t_state = self.t_states_series[:, -1, :]
+                # SAME AS self.t_current_state[-1][1]
+                # SAME AS self.t_current_state[0][1]
 
         with tf.name_scope('bodies_output'):
             self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(cell, self.bodies, initial_state=rnn_tuple_state)
             # current_state = last state of every layer in the network as an LSTMStateTuple
-            # if self.normalize:
-            #     self.b_state = self.normalize_3d(self.b_state)
+
+            if self.args.normalize:
+                self.b_states_series = self.normalize_3d(self.b_states_series)
+
             if self.args.average:
-                self.b_state = self.b_current_state[-1][1]  # todo the average
+                self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
             else:
-                self.b_state = self.b_current_state[-1][1]
+                self.b_state = self.b_states_series[:, -1, :]
+                # SAME AS self.b_current_state[-1][1]
+                # SAME AS self.b_current_state[0][1]
 
         with tf.name_scope('outputs'):
             # batch * d
@@ -127,6 +136,15 @@ class Model(object):
         # l2 is len*batch*1
         l2 = tf.norm(x, ord=2, axis=2, keep_dims=True)
         return x / (l2 + eps)
+
+    def average_without_padding(self, x, ids, eps=1e-8):
+        # len*batch*1
+        mask = tf.not_equal(ids, self.padding_id)
+        mask = tf.expand_dims(mask, 2)
+        mask = tf.cast(mask, tf.float32)
+        # batch*d
+        s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
+        return s
 
     def evaluate(self, data, sess):
         res = []
@@ -223,6 +241,7 @@ class Model(object):
                             self.init_state: _current_state
                         }
                     )
+
                     train_summary_writer.add_summary(_summary, _step)
                     return _step, _loss, _cost
 

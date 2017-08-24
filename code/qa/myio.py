@@ -4,6 +4,8 @@ from nn import EmbeddingLayer
 import random
 import numpy as np
 import sys
+from sklearn.feature_extraction.text import TfidfVectorizer
+import tensorflow as tf
 
 
 def say(s, stream=sys.stdout):
@@ -65,6 +67,29 @@ def create_embedding_layer(raw_corpus, n_d, embs=None, cut_off=2,
     # print embedding_layer.embeddings
     # print embedding_layer.embeddings_trainable
     return embedding_layer
+
+
+def create_idf_weights(corpus_path, embedding_layer):
+    vectorizer = TfidfVectorizer(min_df=1, ngram_range=(1, 1), binary=False)
+
+    lst = []
+    fopen = gzip.open if corpus_path.endswith(".gz") else open
+    with fopen(corpus_path) as fin:
+        for line in fin:
+            id, title, body = line.split("\t")
+            lst.append(title)
+            lst.append(body)
+    vectorizer.fit_transform(lst)
+
+    idfs = vectorizer.idf_  # global term weights - idf vector
+    avg_idf = sum(idfs)/(len(idfs)+0.0)/4.0
+    weights = np.array([avg_idf for i in xrange(embedding_layer.n_V)], dtype=np.float32)
+    vocab_map = embedding_layer.vocab_map
+    for word, idf_value in zip(vectorizer.get_feature_names(), idfs):
+        id = vocab_map.get(word, -1)
+        if id != -1:
+            weights[id] = idf_value
+    return tf.Variable(weights, name="word_weights", dtype=tf.float32)
 
 
 def read_annotations(path, K_neg=20, prune_pos_cnt=10):
