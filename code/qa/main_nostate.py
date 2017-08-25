@@ -18,10 +18,13 @@ class Model(object):
 
     def __init__(self, args, embedding_layer):
         self.args = args
+        self.embedding_layer = embedding_layer
         self.embeddings = embedding_layer.embeddings
         self.padding_id = embedding_layer.vocab_map["<padding>"]
-        self._initialize_graph()
         self.params = {}
+
+    def ready(self):
+        self._initialize_graph()
         for param in tf.trainable_variables():
             self.params[param.name] = param
 
@@ -299,10 +302,11 @@ class Model(object):
 
     def load_trained_vars(self, path):
         print("Loading model checkpoint from {}\n".format(path))
+        assert self.args is not None and self.params != {}
         assign_ops = {}
         with gzip.open(path) as fin:
             data = pickle.load(fin)
-            assert self.args.hidden_dim == data['args'].hidden_dim, ' different hid dim '
+            assert self.args.hidden_dim == data["args"].hidden_dim
             params_values = data['params_values']
             graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
@@ -312,6 +316,10 @@ class Model(object):
         return assign_ops
 
     def load_n_set_model(self, path, sess):
+        with gzip.open(path) as fin:
+            data = pickle.load(fin)
+        self.args = data["args"]
+        self.ready()
         assign_ops = self.load_trained_vars(path)
         sess.run(tf.global_variables_initializer())
         print 'assigning trained values ...\n'
@@ -342,6 +350,7 @@ def main(args):
         test = myio.create_eval_batches(ids_corpus, test, padding_id, pad_left=not args.average)
 
     model = Model(args, embedding_layer)
+    model.ready()
 
     assign_ops = model.load_trained_vars(args.load_pretrain) if args.load_pretrain else None
 
