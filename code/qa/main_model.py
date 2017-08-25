@@ -1,17 +1,13 @@
-import argparse
-import myio
-import sys
-from utils import load_embedding_iterator
-import time
 import tensorflow as tf
 import numpy as np
-import os
 from evaluation import Evaluation
 from nn import get_activation_by_name
 import gzip
 import pickle
 from prettytable import PrettyTable
 from myio import say
+import myio
+import os
 
 
 class Model(object):
@@ -37,6 +33,8 @@ class Model(object):
 
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
 
+            self.init_state = tf.placeholder(tf.float32, [self.args.depth, 2, None, self.args.hidden_dim], name='init_state')
+
         with tf.name_scope('embeddings'):
             self.titles = tf.nn.embedding_lookup(self.embeddings, self.titles_words_ids_placeholder)
             self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
@@ -45,6 +43,11 @@ class Model(object):
             self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
 
         with tf.name_scope('LSTM'):
+            state_per_layer_list = tf.unstack(self.init_state, axis=0)  # i.e. unstack for each layer
+            rnn_tuple_state = tuple(
+                [tf.nn.rnn_cell.LSTMStateTuple(state_per_layer_list[idx][0], state_per_layer_list[idx][1])  # i.e. cell_s, hidden_s
+                 for idx in range(self.args.depth)]
+            )
 
             def lstm_cell():
                 _cell = tf.nn.rnn_cell.LSTMCell(
@@ -58,11 +61,7 @@ class Model(object):
             )
 
         with tf.name_scope('titles_output'):
-            self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(
-                cell,
-                self.titles,
-                dtype=tf.float32
-            )
+            self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(cell, self.titles, initial_state=rnn_tuple_state)
             # current_state = last state of every layer in the network as an LSTMStateTuple
 
             if self.args.normalize:
@@ -76,11 +75,7 @@ class Model(object):
                 # SAME AS self.t_current_state[0][1]
 
         with tf.name_scope('bodies_output'):
-            self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
-                cell,
-                self.bodies,
-                dtype=tf.float32
-            )
+            self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(cell, self.bodies, initial_state=rnn_tuple_state)
             # current_state = last state of every layer in the network as an LSTMStateTuple
 
             if self.args.normalize:
@@ -153,22 +148,44 @@ class Model(object):
         s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
         return s
 
+    @staticmethod
+    def max_margin_loss(labels, scores):
+        pos_scores = [score for label, score in zip(labels, scores) if label == 1]
+        neg_scores = [score for label, score in zip(labels, scores) if label == 0]
+        if len(pos_scores) == 0 or len(neg_scores) == 0:
+            return None
+        pos_score = min(pos_scores)
+        neg_score = max(neg_scores)
+        diff = neg_score - pos_score + 1.0
+        if diff > 0:
+            loss = diff
+        else:
+            loss = 0
+        return loss
+
+    def eval_batch(self, titles, bodies, sess):
+        _current_state = np.zeros(
+            (self.args.depth, 2, titles.T.shape[0], self.args.hidden_dim))  # CURRENT_STATE DEPENDS ON BATCH
+        _scores = sess.run(
+            self.scores,
+            feed_dict={
+                self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
+                self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
+                self.dropout_prob: 0.,
+                self.init_state: _current_state
+            }
+        )
+        return _scores
+
     def evaluate(self, data, sess):
         res = []
-
-        def eval_batch(titles, bodies):
-            _scores = sess.run(
-                self.scores,
-                feed_dict={
-                    self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
-                    self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
-                    self.dropout_prob: 0.
-                }
-            )
-            return _scores
+        hinge_loss = 0.
 
         for idts, idbs, id_labels in data:
-            cur_scores = eval_batch(idts, idbs)
+            cur_scores = self.eval_batch(idts, idbs, sess)
+            mml = self.max_margin_loss(id_labels, cur_scores)
+            if mml is not None:
+                hinge_loss = (hinge_loss + mml) / 2.
             assert len(id_labels) == len(cur_scores)
             ranks = (-cur_scores).argsort()
             ranked_labels = id_labels[ranks]
@@ -179,7 +196,25 @@ class Model(object):
         MRR = round(e.MRR(), 4)
         P1 = round(e.Precision(1), 4)
         P5 = round(e.Precision(5), 4)
-        return MAP, MRR, P1, P5
+        return MAP, MRR, P1, P5, hinge_loss
+
+    def train_batch(self, titles, bodies, pairs, train_op, global_step, train_summary_op, train_summary_writer, sess):
+        _current_state = np.zeros(
+            (self.args.depth, 2, titles.T.shape[0], self.args.hidden_dim))  # CURRENT_STATE DEPENDS ON BATCH
+
+        _, _step, _loss, _cost, _summary = sess.run(
+            [train_op, global_step, self.loss, self.cost, train_summary_op],
+            feed_dict={
+                self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
+                self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
+                self.pairs_ids_placeholder: pairs,
+                self.dropout_prob: np.float32(self.args.dropout),
+                self.init_state: _current_state
+            }
+        )
+
+        train_summary_writer.add_summary(_summary, _step)
+        return _step, _loss, _cost
 
     def train_model(self, train_batches, dev=None, test=None, assign_ops=None):
         with tf.Session() as sess:
@@ -193,18 +228,17 @@ class Model(object):
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
-            optimizer = tf.train.AdamOptimizer(args.learning_rate)
+            optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
             grads_and_vars = optimizer.compute_gradients(self.cost)
             train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
             sess.run(tf.global_variables_initializer())
             if assign_ops:
                 print 'assigning trained values ...\n'
-                for param_name, param_assign_op in assign_ops.iteritems():
-                    sess.run(param_assign_op)
+                sess.run(assign_ops)
 
-            if args.save_dir != "":
-                print("Writing to {}\n".format(args.save_dir))
+            if self.args.save_dir != "":
+                print("Writing to {}\n".format(self.args.save_dir))
 
             # Summaries for loss and cost
             loss_summary = tf.summary.scalar("loss", self.loss)
@@ -212,17 +246,28 @@ class Model(object):
 
             # Train Summaries
             train_summary_op = tf.summary.merge([loss_summary, cost_summary])
-            train_summary_dir = os.path.join(args.save_dir, "summaries", "train")
+            train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
-            if args.save_dir != "":
-                checkpoint_dir = os.path.join(args.save_dir, "checkpoints")
+            # Dev Summaries
+            dev_loss = tf.placeholder(tf.float32)
+            dev_map = tf.placeholder(tf.float32)
+            dev_mrr = tf.placeholder(tf.float32)
+            dev_loss_summary = tf.summary.scalar("dev_loss", dev_loss)
+            dev_map_summary = tf.summary.scalar("dev_map", dev_map)
+            dev_mrr_summary = tf.summary.scalar("dev_mrr", dev_mrr)
+            dev_summary_op = tf.summary.merge([dev_loss_summary, dev_map_summary, dev_mrr_summary])
+            dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
+            dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
+
+            if self.args.save_dir != "":
+                checkpoint_dir = os.path.join(self.args.save_dir, "checkpoints")
                 checkpoint_prefix = os.path.join(checkpoint_dir, "model")
                 if not os.path.exists(checkpoint_dir):
                     os.makedirs(checkpoint_dir)
 
             unchanged = 0
-            max_epoch = args.max_epoch
+            max_epoch = self.args.max_epoch
             for epoch in xrange(max_epoch):
                 unchanged += 1
                 if unchanged > 15:
@@ -233,24 +278,11 @@ class Model(object):
                 train_loss = 0.0
                 train_cost = 0.0
 
-                def train_batch(titles, bodies, pairs):
-
-                    _, _step, _loss, _cost, _summary = sess.run(
-                        [train_op, global_step, self.loss, self.cost, train_summary_op],
-                        feed_dict={
-                            self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
-                            self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
-                            self.pairs_ids_placeholder: pairs,
-                            self.dropout_prob: np.float32(args.dropout)
-                        }
-                    )
-
-                    train_summary_writer.add_summary(_summary, _step)
-                    return _step, _loss, _cost
-
                 for i in xrange(N):
                     idts, idbs, idps = train_batches[i]
-                    cur_step, cur_loss, cur_cost = train_batch(idts, idbs, idps)
+                    cur_step, cur_loss, cur_cost = self.train_batch(
+                        idts, idbs, idps, train_op, global_step, train_summary_op, train_summary_writer, sess
+                    )
 
                     train_loss += cur_loss
                     train_cost += cur_cost
@@ -260,9 +292,15 @@ class Model(object):
 
                     if i == N-1:  # EVAL
                         if dev:
-                            dev_MAP, dev_MRR, dev_P1, dev_P5 = self.evaluate(dev, sess)
+                            dev_MAP, dev_MRR, dev_P1, dev_P5, dev_hinge_loss = self.evaluate(dev, sess)
+                            _dev_sum = sess.run(
+                                dev_summary_op,
+                                {dev_loss: dev_hinge_loss, dev_map: dev_MAP, dev_mrr: dev_MRR}
+                            )
+                            dev_summary_writer.add_summary(_dev_sum, cur_step)
+
                         if test:
-                            test_MAP, test_MRR, test_P1, test_P5 = self.evaluate(test, sess)
+                            test_MAP, test_MRR, test_P1, test_P5, test_hinge_loss = self.evaluate(test, sess)
 
                         if dev_MRR > best_dev:
                             unchanged = 0
@@ -270,7 +308,7 @@ class Model(object):
                             result_table.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
-                            if args.save_dir != "":
+                            if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
                         say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tMRR={:.2f},{:.2f}\n".format(
@@ -325,89 +363,3 @@ class Model(object):
         print 'assigning trained values ...\n'
         for param_name, param_assign_op in assign_ops.iteritems():
             sess.run(param_assign_op)
-
-
-def main(args):
-    raw_corpus = myio.read_corpus(args.corpus)
-    embedding_layer = myio.create_embedding_layer(
-                raw_corpus,
-                n_d=args.hidden_dim,
-                cut_off=args.cut_off,
-                embs=load_embedding_iterator(args.embeddings) if args.embeddings else None
-            )
-    ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, max_len=args.max_seq_len)
-    print("vocab size={}, corpus size={}\n".format(
-            embedding_layer.n_V,
-            len(raw_corpus)
-        ))
-    padding_id = embedding_layer.vocab_map["<padding>"]
-
-    if args.dev:
-        dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
-        dev = myio.create_eval_batches(ids_corpus, dev, padding_id, pad_left=not args.average)
-    if args.test:
-        test = myio.read_annotations(args.test, K_neg=-1, prune_pos_cnt=-1)
-        test = myio.create_eval_batches(ids_corpus, test, padding_id, pad_left=not args.average)
-
-    model = Model(args, embedding_layer)
-    model.ready()
-
-    assign_ops = model.load_trained_vars(args.load_pretrain) if args.load_pretrain else None
-
-    if args.train:
-        start_time = time.time()
-        train = myio.read_annotations(args.train)
-        train_batches = myio.create_batches(
-            ids_corpus, train, args.batch_size, padding_id, pad_left=not args.average
-        )
-        print("{} to create batches\n".format(time.time()-start_time))
-        print("{} batches, {} tokens in total, {} triples in total\n".format(
-                len(train_batches),
-                sum(len(x[0].ravel())+len(x[1].ravel()) for x in train_batches),
-                sum(len(x[2].ravel()) for x in train_batches)
-            ))
-
-        model.train_model(
-            train_batches,
-            dev=dev if args.dev else None,
-            test=test if args.test else None,
-            assign_ops=assign_ops
-        )
-
-
-if __name__ == "__main__":
-    argparser = argparse.ArgumentParser(sys.argv[0])
-    argparser.add_argument("--corpus", type=str)
-    argparser.add_argument("--train", type=str, default="")
-    argparser.add_argument("--test", type=str, default="")
-    argparser.add_argument("--dev", type=str, default="")
-
-    argparser.add_argument("--embeddings", type=str, default="")
-    argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
-    argparser.add_argument("--cut_off", type=int, default=1)
-    argparser.add_argument("--max_seq_len", type=int, default=100)
-
-    argparser.add_argument("--average", type=int, default=0)
-    argparser.add_argument("--batch_size", type=int, default=40)
-    # argparser.add_argument("--learning", type=str, default="adam")
-    argparser.add_argument("--learning_rate", type=float, default=0.001)
-    argparser.add_argument("--l2_reg", type=float, default=1e-5)
-    argparser.add_argument("--activation", "-act", type=str, default="tanh")
-    argparser.add_argument("--depth", type=int, default=1)
-    argparser.add_argument("--dropout", type=float, default=0.0)
-    argparser.add_argument("--max_epoch", type=int, default=50)
-    argparser.add_argument("--normalize", type=int, default=1)
-    # argparser.add_argument("--reweight", type=int, default=1)
-
-    argparser.add_argument("--load_pretrain", type=str, default="")
-
-    timestamp = str(int(time.time()))
-    this_dir = os.path.dirname(os.path.realpath(__file__))
-    out_dir = os.path.join(this_dir, "runs", timestamp)
-
-    argparser.add_argument("--save_dir", type=str, default=out_dir)
-
-    args = argparser.parse_args()
-    print args
-    print ""
-    main(args)
