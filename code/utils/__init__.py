@@ -66,26 +66,27 @@ def str2float_list(str_list):
     return result
 
 
-def read_results_rows(results_file):
-    with open(results_file) as f:
-        lines = f.readlines()
+# def read_results_rows(results_file):
+#     with open(results_file) as f:
+#         lines = f.readlines()
+#
+#         for line in lines:
+#             q_id, q_ids_similar, q_ids_candidates, scores, labels, map_, mrr_, pat1_, pat5_ = \
+#                 line.decode('utf-8').split(u'\t')
+#             q_ids_similar = str2int_list(q_ids_similar.split(' '))
+#             q_ids_candidates = str2int_list(q_ids_candidates.split(' '))
+#             scores = str2float_list(scores.split(' '))
+#             labels = str2int_list(labels.split(' '))
+#             yield int(q_id), q_ids_similar, q_ids_candidates, scores, labels,\
+#                 float(map_), float(mrr_), float(pat1_), float(pat5_)
 
-        for line in lines:
-            q_id, q_ids_similar, q_ids_candidates, scores, labels, map_, mrr_, pat1_, pat5_ = \
-                line.decode('utf-8').split(u'\t')
-            q_ids_similar = str2int_list(q_ids_similar.split(' '))
-            q_ids_candidates = str2int_list(q_ids_candidates.split(' '))
-            scores = str2float_list(scores.split(' '))
-            labels = str2int_list(labels.split(' '))
-            yield int(q_id), q_ids_similar, q_ids_candidates, scores, labels,\
-                float(map_), float(mrr_), float(pat1_), float(pat5_)
 
-
-def questions_index(questions_list):
+def questions_index(questions_list, as_tuple=False):
     questions = {}
     for i in range(len(questions_list)):
         q_id, q_title, q_body = questions_list[i]
-        # questions[int(q_id)] = (q_title, q_body)
-        questions[int(q_id)] = "%s %s" % (q_title, q_body)
+        if as_tuple:
+            questions[int(q_id)] = (q_title, q_body)
+        else:
+            questions[int(q_id)] = "%s %s" % (q_title, q_body)
     return questions
-

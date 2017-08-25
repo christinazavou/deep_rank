@@ -153,20 +153,19 @@ class Model(object):
     def evaluate(self, data, sess):
         res = []
 
-        def eval_batch(titles, bodies, labels):
+        def eval_batch(titles, bodies):
             _scores = sess.run(
                 self.scores,
                 feed_dict={
                     self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                     self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
-                    self.pairs_ids_placeholder: np.reshape(labels, (1, labels.shape[0])),
                     self.dropout_prob: 0.
                 }
             )
             return _scores
 
         for idts, idbs, id_labels in data:
-            cur_scores = eval_batch(idts, idbs, id_labels)
+            cur_scores = eval_batch(idts, idbs)
             assert len(id_labels) == len(cur_scores)
             ranks = (-cur_scores).argsort()
             ranked_labels = id_labels[ranks]
@@ -311,6 +310,13 @@ class Model(object):
                 assign_op = tf.assign(variable, param_value)
                 assign_ops[param_name] = assign_op
         return assign_ops
+
+    def load_n_set_model(self, path, sess):
+        assign_ops = self.load_trained_vars(path)
+        sess.run(tf.global_variables_initializer())
+        print 'assigning trained values ...\n'
+        for param_name, param_assign_op in assign_ops.iteritems():
+            sess.run(param_assign_op)
 
 
 def main(args):
