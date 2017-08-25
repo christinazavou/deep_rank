@@ -21,6 +21,9 @@ class Model(object):
         self.embeddings = embedding_layer.embeddings
         self.padding_id = embedding_layer.vocab_map["<padding>"]
         self._initialize_graph()
+        self.params = {}
+        for param in tf.trainable_variables():
+            self.params[param.name] = param
 
     def _initialize_graph(self):
 
@@ -195,7 +198,8 @@ class Model(object):
             sess.run(tf.global_variables_initializer())
             if assign_ops:
                 print 'assigning trained values ...\n'
-                sess.run(assign_ops)
+                for param_name, param_assign_op in assign_ops.iteritems():
+                    sess.run(param_assign_op)
 
             if args.save_dir != "":
                 print("Writing to {}\n".format(args.save_dir))
@@ -279,15 +283,14 @@ class Model(object):
     def save(self, sess, path, step):
         path = "{}_{}_{}".format(path, step, ".pkl.gz")
         print("Saving model checkpoint to {}\n".format(path))
-        params = tf.trainable_variables()
-        params_dict = {}
-        for param in params:
-            params_dict[param.name] = sess.run(param)
+        params_values = {}
+        for param_name, param in self.params.iteritems():
+            params_values[param.name] = sess.run(param)
         # print 'params_dict\n', params_dict
         with gzip.open(path, "w") as fout:
             pickle.dump(
                 {
-                    "params_dict": params_dict,
+                    "params_values": params_values,
                     "args": self.args,
                     "step": step
                 },
@@ -297,16 +300,16 @@ class Model(object):
 
     def load_trained_vars(self, path):
         print("Loading model checkpoint from {}\n".format(path))
-        assign_ops = []
+        assign_ops = {}
         with gzip.open(path) as fin:
             data = pickle.load(fin)
-            assert self.args == data['args'], 'some different args:\n{}'.format(self.args)
-            params_dict = data['params_dict']
+            assert self.args.hidden_dim == data['args'].hidden_dim, ' different hid dim '
+            params_values = data['params_values']
             graph = tf.get_default_graph()
-            for param_name, param_value in params_dict.iteritems():
+            for param_name, param_value in params_values.iteritems():
                 variable = graph.get_tensor_by_name(param_name)
                 assign_op = tf.assign(variable, param_value)
-                assign_ops.append(assign_op)
+                assign_ops[param_name] = assign_op
         return assign_ops
 
 
