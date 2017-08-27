@@ -10,6 +10,7 @@ import os
 
 
 from main_model_nostate import Model as BasicModel
+NUM_FEATURES = 4
 
 
 class Model(BasicModel):
@@ -103,22 +104,31 @@ class Model(BasicModel):
 
         with tf.name_scope('WIDE-COMPONENT'):
 
-            num_features = 2
-
             with tf.name_scope("input"):
                 # batch size * candidates * features
                 self.features_placeholder = tf.placeholder(
-                    tf.float32, [None, None, num_features], name='features'
+                    tf.float32, [None, None, NUM_FEATURES], name='features'
                 )
 
+                # if self.args.word_vec_feature:
+                #     self.summed_vectors = tf.reduce_sum(self.titles, axis=1) + tf.reduce_sum(self.bodies, axis=1)
+                #     # For testing:
+                #     self.sv_features = tf.reduce_sum(tf.multiply(self.summed_vectors[0], self.summed_vectors[1:]), axis=1)
+                #     # For training:
+                #     sv_features2 = tf.nn.embedding_lookup(
+                #         self.summed_vectors, self.pairs_ids_placeholder, name='summed_vec_features'
+                #     )
+                #     self.sv_features2 = tf.reduce_sum(tf.expand_dims(sv_features2[:, 0, :], axis=1) * sv_features2[:, 1:, :], axis=2)
+                #     self.features = tf.concat([self.features_placeholder, ])
+
             with tf.name_scope("weights"):
-                self.W = tf.Variable(random_init([num_features, 1]), name="weight")
+                self.W = tf.Variable(random_init([NUM_FEATURES, 1]), name="weight")
                 self.b = tf.Variable(np.random.random(), name="bias")
 
             with tf.name_scope('outputs'):
                 # Construct a linear model
                 # one prediction for each sample in the batch and each candidate
-                predictions = tf.matmul(tf.reshape(self.features_placeholder, [-1, num_features]), self.W)
+                predictions = tf.matmul(tf.reshape(self.features_placeholder, [-1, NUM_FEATURES]), self.W)
 
             with tf.name_scope('linear-logits'):
                 # For testing:

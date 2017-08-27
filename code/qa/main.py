@@ -27,6 +27,9 @@ def main(args):
         ))
     padding_id = embedding_layer.vocab_map["<padding>"]
 
+    if args.reweight:
+        weights = myio.create_idf_weights(args.corpus, embedding_layer)
+
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
         dev = myio.create_eval_batches(ids_corpus, dev, padding_id, pad_left=not args.average)
@@ -34,7 +37,7 @@ def main(args):
         test = myio.read_annotations(args.test, K_neg=-1, prune_pos_cnt=-1)
         test = myio.create_eval_batches(ids_corpus, test, padding_id, pad_left=not args.average)
 
-    model = Model(args, embedding_layer)
+    model = Model(args, embedding_layer, weights=weights if args.reweight else None)
     model.ready()
 
     assign_ops = model.load_trained_vars(args.load_pretrain) if args.load_pretrain else None
@@ -82,7 +85,7 @@ if __name__ == "__main__":
     argparser.add_argument("--dropout", type=float, default=0.0)
     argparser.add_argument("--max_epoch", type=int, default=50)
     argparser.add_argument("--normalize", type=int, default=1)
-    # argparser.add_argument("--reweight", type=int, default=1)
+    argparser.add_argument("--reweight", type=int, default=1)
 
     argparser.add_argument("--load_pretrain", type=str, default="")
 

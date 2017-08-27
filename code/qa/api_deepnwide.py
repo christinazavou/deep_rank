@@ -169,7 +169,7 @@ if __name__ == '__main__':
         devmap, devmrr, devpat1, devpat5, rank_labels, rank_ids, qids, rank_scores = myqrapi.evaluate(dev, sess)
 
         with open(args.results_file, 'w') as f:
-            for i, (_, _, labels, pid, qids) in enumerate(dev):
+            for i, (_, _, labels, features, pid, qids) in enumerate(dev):
                 print_qids_similar = [x for x, l in zip(qids, labels) if l == 1]
                 print_qids_similar = " ".join([str(x) for x in print_qids_similar])
 

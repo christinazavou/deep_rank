@@ -12,11 +12,12 @@ import os
 
 class Model(object):
 
-    def __init__(self, args, embedding_layer):
+    def __init__(self, args, embedding_layer, weights=None):
         self.args = args
         self.embedding_layer = embedding_layer
         self.embeddings = embedding_layer.embeddings
         self.padding_id = embedding_layer.vocab_map["<padding>"]
+        self.weights = weights
         self.params = {}
 
     def ready(self):
@@ -37,9 +38,18 @@ class Model(object):
 
         with tf.name_scope('embeddings'):
             self.titles = tf.nn.embedding_lookup(self.embeddings, self.titles_words_ids_placeholder)
-            self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
-
             self.bodies = tf.nn.embedding_lookup(self.embeddings, self.bodies_words_ids_placeholder)
+
+            if self.weights is not None:
+                titles_weights = tf.nn.embedding_lookup(self.weights, self.titles_words_ids_placeholder)
+                titles_weights = tf.expand_dims(titles_weights, axis=2)
+                self.titles = self.titles * titles_weights
+
+                bodies_weights = tf.nn.embedding_lookup(self.weights, self.bodies_words_ids_placeholder)
+                bodies_weights = tf.expand_dims(bodies_weights, axis=2)
+                self.bodies = self.bodies * bodies_weights
+
+            self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
             self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
 
         with tf.name_scope('LSTM'):
