@@ -1,5 +1,6 @@
 import gzip
 import numpy as np
+import pandas as pd
 
 
 def load_embedding_iterator(path):
@@ -19,9 +20,19 @@ def read_questions(q_file):
         questions = f.readlines()
 
         for line in questions:
-            q_id, q_title, q_body = line.decode('utf-8').split(u'\t')
+            q_id, q_title, q_body = line.rstrip('\n').decode('utf-8').split(u'\t')
             # print "Qid: {}\tQt: {}\tQb: {}".format(q_id, q_title, q_body)
             yield int(q_id), q_title, q_body
+
+
+def read_questions_with_tags(q_file):
+    with open(q_file) as f:
+        questions = f.readlines()
+
+        for line in questions:
+            q_id, q_title, q_body, tags = line.rstrip('\n').decode('utf-8').split(u'\t')
+            tags = tags.split(', ')
+            yield int(q_id), q_title, q_body, tags
 
 
 def read_eval_rows(eval_file):  # test or dev
@@ -90,3 +101,30 @@ def questions_index(questions_list, as_tuple=False):
         else:
             questions[int(q_id)] = "%s %s" % (q_title, q_body)
     return questions
+
+
+def read_df(df_file, chunk_size=None, read_columns=None):
+    if '.csv' in df_file:
+        if chunk_size:
+            return pd.read_csv(df_file, encoding='utf8', index_col=0, chunksize=chunk_size)
+        else:
+            if read_columns:
+                return pd.read_csv(df_file, encoding='utf8', index_col=0, usecols=read_columns)
+            else:
+                return pd.read_csv(df_file, encoding='utf8', index_col=0)
+    elif '.p' in df_file:
+        if read_columns:
+            return pd.read_pickle(df_file)[read_columns]
+        else:
+            return pd.read_pickle(df_file)
+    else:
+        raise Exception(' unknown pandas file {}'.format(df_file))
+
+
+def store_df(df, df_file, index=True, head=True, mode='w'):
+    if '.csv' in df_file:
+        df.to_csv(df_file, encoding='utf8', header=head, index=index, mode=mode)
+    elif '.p' in df_file:
+        df.to_pickle(df_file)
+    else:
+        raise Exception(' unknown pandas file {}'.format(df_file))
