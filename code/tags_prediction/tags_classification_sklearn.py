@@ -4,7 +4,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import classification_report
+# from sklearn.metrics import classification_report
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.svm import LinearSVC
 import pickle
@@ -13,6 +13,34 @@ import argparse
 from sklearn.model_selection import PredefinedSplit
 import os
 import numpy as np
+import pandas as pd
+# from sklearn.metrics import coverage_error
+# coverage_error(np.array([[1, 0, 0], [0, 0, 1]]), np.array([[0.75, 0.5, 1], [1, 0.2, 0.1]]))
+# from sklearn.metrics import label_ranking_average_precision_score
+# label_ranking_average_precision_score(np.array([[1, 0, 0], [0, 0, 1]]), np.array([[0.75, 0.5, 1], [1, 0.2, 0.1]]))
+# from sklearn.metrics import label_ranking_loss
+# label_ranking_loss(np.array([[1, 0, 0], [0, 0, 1]]), np.array([[0.75, 0.5, 1], [1, 0.2, 0.1]]))
+# from sklearn.metrics import hamming_loss
+# hamming_loss(np.array([[1,0,0,1],[0,1,0,1]]), np.array([[1,0,0,1],[1,1,0,0]]))
+# from sklearn.metrics import log_loss
+# log_loss(np.array([[1, 0, 0], [0, 0, 1]]), np.array([[0.75, 0.5, 1], [1, 0.2, 0.1]]))
+
+
+# from sklearn.preprocessing import MultiLabelBinarizer
+# from sklearn.metrics import f1_score
+# y_true = [[1,2,3],[1],[2]]
+# y_pred = [[1,2,3],[2],[1]]
+# m = MultiLabelBinarizer().fit(y_true)
+# f1_score(m.transform(y_true),
+#          m.transform(y_pred),
+#          average='micro')
+
+from sklearn.metrics import precision_recall_fscore_support
+# precision_recall_fscore_support(np.array([[1, 0, 0], [0, 0, 1]]), np.array([[1, 1, 1], [1, 0, 0]]),average='macro')
+# precision_recall_fscore_support(np.array([[1, 0, 0], [0, 0, 1]]), np.array([[1, 1, 1], [1, 0, 0]]),average='micro')
+
+# from sklearn.metrics import average_precision_score
+# average_precision_score(np.array([[1, 0, 0], [0, 0, 1]]), np.array([[1, 1, 1], [1, 0, 0]]),average='micro')
 
 
 def grid_search(train_x, train_y, dev_x, dev_y, parameters, pipeline):
@@ -37,8 +65,13 @@ def grid_search(train_x, train_y, dev_x, dev_y, parameters, pipeline):
 
 def evaluate(test_x, test_y, labels, model):
     predictions = model.predict(test_x)
-    print 'MACRO RESULTS\n:', classification_report(test_y, predictions, target_names=labels)
+    # print 'MACRO RESULTS\n:', classification_report(test_y, predictions, target_names=labels)
     # print 'MICRO RESULTS\n:', classification_report(test_y, predictions, target_names=labels, sample_weight=)
+    precision, recall, f1, support = precision_recall_fscore_support(test_y, predictions)
+    results = pd.DataFrame({'tag/label': labels, 'precision': precision, 'recall': recall, 'f1': f1, 'support': support})
+    print results.head(len(labels))
+    print 'MACRO PRECISION RECALL F1: ', precision_recall_fscore_support(test_y, predictions, average='macro')
+    print 'MICRO PRECISION RECALL F1: ', precision_recall_fscore_support(test_y, predictions, average='micro')
 
 
 def get_train_test_dev(df, labels):
