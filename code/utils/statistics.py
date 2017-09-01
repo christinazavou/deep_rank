@@ -84,7 +84,7 @@ if __name__ == '__main__':
 
     # VARIABLES
     DIR = '/home/christina/Documents/Thesis/data/askubuntu/additional/'
-    NUM = 500
+    NUM = 100
     # -----------------------------------------------------------------
 
     df = read_df(os.path.join(DIR, 'data_frame_corpus.csv'))
