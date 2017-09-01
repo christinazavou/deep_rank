@@ -1,29 +1,29 @@
-import tensorflow as tf
-from statistics import read_df
 import argparse
-from sklearn.metrics import hamming_loss
-import numpy as np
-import sys
-from prettytable import PrettyTable
 import os
-from qa import myio
-import gzip
-import random
 import pickle
-from sklearn.model_selection import StratifiedShuffleSplit
-import myio as myio_
+import random
+import sys
 import time
-from utils import load_embedding_iterator
+
+import numpy as np
+import tensorflow as tf
+from prettytable import PrettyTable
+
+import tags_prediction.myio as myio_
 from nn import get_activation_by_name
+from qa import myio
+from utils import load_embedding_iterator
+from utils.statistics import read_df
 
 
 class Model(object):
-    def __init__(self, args, embedding_layer, weights=None):
+    def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args
         self.embedding_layer = embedding_layer
         self.embeddings = embedding_layer.embeddings
         self.padding_id = embedding_layer.vocab_map["<padding>"]
         self.weights = weights
+        self.output_dim = output_dim
         self.params = {}
 
     def ready(self):
@@ -35,7 +35,7 @@ class Model(object):
         with tf.name_scope('input'):
             self.titles_words_ids_placeholder = tf.placeholder(tf.int32, [None, None], name='titles_ids')
             self.bodies_words_ids_placeholder = tf.placeholder(tf.int32, [None, None], name='bodies_ids')
-            self.target = tf.placeholder(tf.float32, [None, self.args.output_dim], name='target_tags')
+            self.target = tf.placeholder(tf.float32, [None, self.output_dim], name='target_tags')
 
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
 
@@ -96,10 +96,10 @@ class Model(object):
             self.h_final = self.normalize_2d(self.h_final)
 
             self.w_o = tf.Variable(
-                tf.random_normal([self.args.hidden_dim, self.args.output_dim], mean=0.0, stddev=0.05),
+                tf.random_normal([self.args.hidden_dim, self.output_dim], mean=0.0, stddev=0.05),
                 name='weights_out'
             )
-            self.b_o = tf.Variable(tf.zeros([self.args.output_dim]), name='bias_out')
+            self.b_o = tf.Variable(tf.zeros([self.output_dim]), name='bias_out')
 
             out = tf.matmul(self.h_final, self.w_o) + self.b_o
             self.output = tf.nn.sigmoid(out)
@@ -390,10 +390,10 @@ class Model(object):
 
 
 def main(args):
-    df = read_df('data.csv')
+    df = read_df(args.df_path)
     df = df.fillna(u'')
 
-    labels = pickle.load(open(args.name, 'rb'))
+    label_tags = pickle.load(open(args.tags_file, 'rb'))
 
     raw_corpus = myio_.read_corpus(args.corpus, with_tags=True)
     embedding_layer = myio.create_embedding_layer(
@@ -403,7 +403,7 @@ def main(args):
                 embs=load_embedding_iterator(args.embeddings) if args.embeddings else None
             )
 
-    ids_corpus_tags = myio_.make_tag_labels(df, labels)
+    ids_corpus_tags = myio_.make_tag_labels(df, label_tags)
 
     ids_corpus = myio_.map_corpus(raw_corpus, embedding_layer, ids_corpus_tags, max_len=args.max_seq_len)
 
@@ -419,16 +419,11 @@ def main(args):
     dev = myio_.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id, pad_left=not args.average)
     test = myio_.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id, pad_left=not args.average)
     train = myio_.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id, pad_left=not args.average)
+    print '{} batches of {} instances in dev, {} in test and {} in train.'.format(
+        len(dev), args.batch_size, len(test), len(train))
 
     model = Model(args, embedding_layer, weights=weights if args.reweight else None)
     model.ready()
-
-    if args.split == "random":
-        data = dev + train
-        end_idx = int(len(data) * 0.85)
-        random.shuffle(data)
-        train = data[0:end_idx]
-        dev = data[end_idx:]
 
     model.train_model(train, dev=dev, test=test)
 
@@ -437,6 +432,7 @@ if __name__ == '__main__':
 
     argparser = argparse.ArgumentParser(sys.argv[0])
     argparser.add_argument("--corpus", type=str)
+    argparser.add_argument("--df_path", type=str)
 
     argparser.add_argument("--embeddings", type=str, default="")
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
@@ -454,15 +450,12 @@ if __name__ == '__main__':
     argparser.add_argument("--average", type=int, default=0)
     argparser.add_argument("--depth", type=int, default=1)
 
-    argparser.add_argument("--output_dim", type=int, default=300)
-
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))
     out_dir = os.path.join(this_dir, "runs", timestamp)
 
     argparser.add_argument("--save_dir", type=str, default=out_dir)
-    argparser.add_argument("--split", type=str, default="standard")
-    argparser.add_argument("--name", type=str, default='all_selected_300.p')
+    argparser.add_argument("--tags_file", type=str)
 
     argparser.add_argument("--loss_type", type=str, default='xentropy')
     argparser.add_argument("--threshold", type=float, default=0.5)

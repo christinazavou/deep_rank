@@ -1,16 +1,15 @@
+import os
+import pickle
+
+import numpy as np
 import tensorflow as tf
-from statistics import read_df
-import operator
+from prettytable import PrettyTable
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import hamming_loss
-import numpy as np
-from dio import bp_mll_loss
-from prettytable import PrettyTable
-import os
-from qa import myio
-import gzip
-import pickle
 from sklearn.model_selection import StratifiedShuffleSplit
+
+from qa import myio
+from utils.statistics import read_df
 
 
 class Model(object):
