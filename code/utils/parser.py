@@ -8,6 +8,7 @@ import copy
 from utils import read_questions_with_tags, read_df, store_df, read_eval_rows
 from collections import OrderedDict
 import pandas as pd
+from splitter import get_eval_ids, make_data_frame_for_tag_training
 
 
 NUM_PROCESSES = 8
@@ -273,21 +274,6 @@ def make_save_dataframe(infile, outfile, chunk_size=5000):
             init_idx = row + 1
 
 
-def add_type_in_df():
-    df['type'] = 'train'
-
-    E = list(read_eval_rows('/home/christina/Documents/Thesis/data/askubuntu/dev.txt'))
-    q_ids = [e[0] for e in E]
-    for q_id in q_ids:
-        idx = df[df['id'] == q_id].index[0]
-        df.set_value(idx, 'type', 'dev')
-    E = read_eval_rows('/home/christina/Documents/Thesis/data/askubuntu/test.txt')
-    q_ids = [e[0] for e in E]
-    for q_id in q_ids:
-        idx = df[df['id'] == q_id].index[0]
-        df.set_value(idx, 'type', 'test')
-
-
 if __name__ == '__main__':
     main(
         '/home/christina/Documents/Thesis/data/askubuntu/askubuntu_2014_posts.xml',
@@ -299,6 +285,11 @@ if __name__ == '__main__':
     df = read_df('data.csv')
 
     if 'type' not in list(df):
-        add_type_in_df()
+        E = read_eval_rows('/home/christina/Documents/Thesis/data/askubuntu/test.txt')
+        test_ids = get_eval_ids(E)
+        E = read_eval_rows('/home/christina/Documents/Thesis/data/askubuntu/dev.txt')
+        dev_ids = get_eval_ids(E)
+
+        df = make_data_frame_for_tag_training(df, list(test_ids), list(dev_ids))
         store_df(df, 'data.csv')
 
