@@ -82,7 +82,10 @@ def write_question_num_per_tag(data, outfile=None, num=100, type_name=None):
 
 if __name__ == '__main__':
 
+    # VARIABLES
     DIR = '/home/christina/Documents/Thesis/data/askubuntu/additional/'
+    NUM = 500
+    # -----------------------------------------------------------------
 
     df = read_df(os.path.join(DIR, 'data_frame_corpus.csv'))
     df = df.fillna(u'')
@@ -94,7 +97,6 @@ if __name__ == '__main__':
     hist_num_of_tags(df,)
     tags_not_in_questions(df,)
 
-    NUM = 500
     commonsname = os.path.join(DIR, 'top{}_common_tags.p'.format(NUM))
     corpussname = os.path.join(DIR, 'top{}_corpus_tags.p'.format(NUM))
     trainsname = os.path.join(DIR, 'top{}_train_tags.p'.format(NUM))
