@@ -1,53 +1,70 @@
 import matplotlib.pyplot as plt
 import operator
-from utils import read_questions_with_tags, read_df, store_df
+from utils import read_df
 import pickle
 import os
 import numpy as np
 
 
-def hist_num_of_tags():
-    num_of_tags = [len(q[3]) for q in Q]
+def frqplot(tags=['tag' for _ in range(50)], freq=range(50), title='tag freq. in train'):
+
+    ind = np.arange(len(freq))  # the x locations for the groups
+    width = 0.1       # the width of the bars
+
+    fig, ax = plt.subplots()
+    ax.bar(ind, freq, width, color='r')
+    # add some text for labels, title and axes ticks
+    ax.set_title(title)
+    ax.set_xticks(ind + width / 2)
+    ax.set_xticklabels(tags, rotation=50)
+    plt.show()
+
+
+def hist_num_of_tags(data_frame, type_name=None):
+    if type_name:
+        data_frame = data_frame[data_frame['type'] == type_name]
+
+    num_of_tags = [len(row_['tags'].split(', ')) for _, row_ in data_frame.iterrows()]
 
     plt.hist(num_of_tags)
-    plt.title('tags per question')
+    plt.title('tags per question in {} corpus'.format(type_name if type_name else 'whole'))
     plt.xlabel('amount of tags')
     plt.show()
-
-    print 'tags: ', tags_set
-    print 'num of tags: ', len(tags_set)
 
     print 'num of questions with 0 tags ', num_of_tags.count(0)
-    print 'avg, min, max number of tags per question ', sum(num_of_tags)/(len(Q)+0.), min(num_of_tags), max(num_of_tags)
+    print 'avg, min, max number of tags per question ', sum(num_of_tags)/(len(data_frame)+0.), min(num_of_tags), max(num_of_tags)
 
 
-def tags_not_in_questions():
+def tags_not_in_questions(data_frame, type_name=None):
+    if type_name:
+        data_frame = data_frame[data_frame['type'] == type_name]
     tags_not_in_question = []
     tags_not_in = set()
-    for q in Q:
+    for _, row_ in data_frame.iterrows():
         ans = 0
-        for t in q[3]:
-            if t not in q[1] and t not in q[2]:
-                ans += 1
-                tags_not_in.update({t})
+        try:
+            for t in row_['tags'].split(u", "):
+                if t not in row_['title'] and t not in row_['body']:
+                    ans += 1
+                    tags_not_in.update({t})
+        except:
+            print 'in except: ', row_['tags'], type(row_['tags'])
         tags_not_in_question.append(ans)
 
-    print 'some tags not in questions happens in ', len(Q) - tags_not_in_question.count(0), ' out of ', len(Q)
+    print 'some tags not in questions happens in ', len(data_frame) - tags_not_in_question.count(0), ' out of ', len(data_frame)
 
     plt.hist(tags_not_in_question)
-    plt.title('tags missing from question text')
+    plt.title('tags missing from question text in {} corpus'.format(type_name if type_name else 'whole'))
     plt.xlabel('amount of tags')
     plt.show()
 
-    print 'set of such tags: ', tags_not_in
-    print 'num of tags not in question: ', len(tags_not_in)
+    print len(tags_not_in), ' of such tags: ', tags_not_in
     print 'tags containing "-" out of those: ', len([t for t in tags_not_in if '-' in t])
 
 
-# todo: SKIP TAGS WITH FREQUENCY < 5
-def write_question_num_per_tag(data, outfile=None, num=100, freq=False):
+def write_question_num_per_tag(data, outfile=None, num=100, type_name=None):
     questions_per_tag = {}
-    for col in columns[4:]:
+    for col in list(tags_set):
         if sum(data[col].values) > 0:
             questions_per_tag[col] = sum(data[col].values)
     questions_per_tag_sorted = sorted(questions_per_tag.items(), key=operator.itemgetter(1), reverse=True)
@@ -56,71 +73,85 @@ def write_question_num_per_tag(data, outfile=None, num=100, freq=False):
             for item in questions_per_tag_sorted:
                 f.write('{} : {}\n'.format(item[0], item[1]))
     to_check = [item[0] for item in questions_per_tag_sorted[0:num]]
-    if freq:
-        return questions_per_tag_sorted[0:num]
+
+    t = [x[0] for x in questions_per_tag_sorted[0:50]]
+    f = [x[1] for x in questions_per_tag_sorted[0:50]]
+    frqplot(t, f, 'tag freq. in '.format(type_name))
     return to_check
 
 
 if __name__ == '__main__':
 
-    Q = list(read_questions_with_tags('/home/christina/Documents/Thesis/data/askubuntu/texts_raw_with_tags.txt'))
-    print 'num of questions ', len(Q)
+    DIR = '/home/christina/Documents/Thesis/data/askubuntu/additional/'
 
-    tags_set = set()
-    for q in Q:
-        tags_set.update(set(q[3]))
+    df = read_df(os.path.join(DIR, 'data_frame_corpus.csv'))
+    df = df.fillna(u'')
+    print 'num of questions ', df.shape[0]
 
-    # hist_num_of_tags()
-    # tags_not_in_questions()
+    tags_set = set(list(df)) - {'id', 'title', 'body', 'tags', 'type'}
+    print len(tags_set), ' tags: ', tags_set
 
-    columns = ['id', 'title', 'body', 'tags'] + [tag for tag in tags_set]
+    hist_num_of_tags(df,)
+    tags_not_in_questions(df,)
 
-    df = read_df('data.csv')
+    NUM = 500
+    commonsname = os.path.join(DIR, 'top{}_common_tags.p'.format(NUM))
+    corpussname = os.path.join(DIR, 'top{}_corpus_tags.p'.format(NUM))
+    trainsname = os.path.join(DIR, 'top{}_train_tags.p'.format(NUM))
 
-    NUM = 300
-    NAME = 'common_selected_{}.p'.format(NUM)
-    NAME2 = 'all_selected_{}.p'.format(NUM)
+    try:
+        common_selected = pickle.load(open(commonsname, 'rb'))
+        corpus_selected = pickle.load(open(corpussname, 'rb'))
+        train_selected = pickle.load(open(trainsname, 'rb'))
+    except:
 
-    if os.path.isfile(NAME) and os.path.isfile(NAME2):
-        common_selected = pickle.load(open(NAME, 'rb'))
-        all_selected = pickle.load(open(NAME2, 'rb'))
-    else:
+        top_tags = dict()
+        top_tags['corpus'] = write_question_num_per_tag(
+            df, outfile=os.path.join(DIR, 'corpus_{}tags_stats.txt'.format(NUM)), num=NUM, type_name='corpus')
 
-        lists = dict()
-        # lists['all'] = write_question_num_per_tag(df, num=NUM)
-        for type_name, group_df in df.groupby('type'):
-            # write_question_num_per_tag(group_df, 'data_stats_{}.txt'.format(typename))
-            lists[type_name] = write_question_num_per_tag(group_df, num=NUM)
+        for typename, group_df in df.groupby('type'):
+            top_tags[typename] = write_question_num_per_tag(
+                group_df, os.path.join(DIR, '{}_{}tags_stats.txt'.format(typename, NUM)), NUM, typename)
 
-        print len(set(lists['train']) - set(lists['dev']) - set(lists['test']))
-        print len((set(lists['test']) | set(lists['dev'])) - set(lists['train']))
-        print len(set(lists['test']) & set(lists['dev']) & set(lists['train']))
-        # print len(set(lists['test']) & set(lists['dev']))
+        # After taking top from eval, tags not taken from train/corpus
+        print '{} {}'.format(
+            len(set(top_tags['train']) - set(top_tags['dev']) - set(top_tags['test'])),
+            len(set(top_tags['corpus']) - set(top_tags['dev']) - set(top_tags['test']))
+        )
+        # After taking top from train/corpus, tags not taken from eval
+        print '{} {}'.format(
+            len((set(top_tags['test']) | set(top_tags['dev'])) - set(top_tags['train'])),
+            len((set(top_tags['test']) | set(top_tags['dev'])) - set(top_tags['corpus']))
+        )
+        # common tags between top in tags dev and train/corpus
+        print '{} {}'.format(
+            len(set(top_tags['test']) & set(top_tags['dev']) & set(top_tags['train'])),
+            len(set(top_tags['test']) & set(top_tags['dev']) & set(top_tags['corpus']))
+        )
         print '\n\n'
-        # print len((set(lists['test']) | set(lists['dev'])) - set(lists['all']))
-        # print len(set(lists['test']) & set(lists['dev']) & set(lists['all']))
 
-        common_selected = list(set(lists['test']) & set(lists['dev']) & set(lists['train']))
-        all_selected = lists['train']
-        del lists
-        pickle.dump(common_selected, open(NAME, 'wb'))
-        pickle.dump(all_selected, open(NAME2, 'wb'))
-
-        for type_name, group_df in df.groupby('type'):
-            values1 = np.array(group_df[common_selected].values)
-            values1 = np.sum(values1, 1)
-            values1 = np.sum((values1 == 0).astype(np.int32))
-            print values1, ' with no labels in ', type_name
-            values2 = np.array(group_df[all_selected].values)
-            values2 = np.sum(values2, 1)
-            values2 = np.sum((values2 == 0).astype(np.int32))
-            print values2, ' with no labels in ', type_name
+        common_selected = list(set(top_tags['test']) & set(top_tags['dev']) & set(top_tags['train']))
+        corpus_selected = top_tags['corpus']
+        train_selected = top_tags['train']
+        del top_tags
+        pickle.dump(common_selected, open(commonsname, 'wb'))
+        pickle.dump(corpus_selected, open(corpussname, 'wb'))
+        pickle.dump(train_selected, open(trainsname, 'wb'))
 
     print 'common selected ', common_selected
-    print 'all selected ', all_selected
+    print 'corpus selected ', corpus_selected
+    print 'train selected ', train_selected
 
-    from freq_plot import frqplot
-    r = write_question_num_per_tag(df, num=50, freq=True)
-    t = [x[0] for x in r]
-    f = [x[1] for x in r]
-    frqplot(t, f)
+    for typename, group_df in df.groupby('type'):
+        no_labels_cases_if_common_selected = np.array(group_df[common_selected].values)
+        no_labels_cases_if_common_selected = np.sum(no_labels_cases_if_common_selected, 1)
+        no_labels_cases_if_common_selected = np.sum((no_labels_cases_if_common_selected == 0).astype(np.int32))
+        print no_labels_cases_if_common_selected, ' with no labels in ', typename
+        no_labels_cases_if_corpus_selected = np.array(group_df[corpus_selected].values)
+        no_labels_cases_if_corpus_selected = np.sum(no_labels_cases_if_corpus_selected, 1)
+        no_labels_cases_if_corpus_selected = np.sum((no_labels_cases_if_corpus_selected == 0).astype(np.int32))
+        print no_labels_cases_if_corpus_selected, ' with no labels in ', typename
+        no_labels_cases_if_train_selected = np.array(group_df[corpus_selected].values)
+        no_labels_cases_if_train_selected = np.sum(no_labels_cases_if_train_selected, 1)
+        no_labels_cases_if_train_selected = np.sum((no_labels_cases_if_train_selected == 0).astype(np.int32))
+        print no_labels_cases_if_train_selected, ' with no labels in ', typename
