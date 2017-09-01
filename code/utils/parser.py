@@ -280,9 +280,12 @@ if __name__ == '__main__':
         '/home/christina/Documents/Thesis/data/askubuntu/texts_raw_with_tags.txt'
     )
 
-    make_save_dataframe('/home/christina/Documents/Thesis/data/askubuntu/texts_raw_with_tags.txt', 'data.csv')
+    make_save_dataframe(
+        '/home/christina/Documents/Thesis/data/askubuntu/texts_raw_with_tags.txt',
+        '/home/christina/Documents/Thesis/data/askubuntu/data_frame_corpus.csv'
+    )
 
-    df = read_df('data.csv')
+    df = read_df('/home/christina/Documents/Thesis/data/askubuntu/data_frame_corpus.csv')
 
     if 'type' not in list(df):
         E = read_eval_rows('/home/christina/Documents/Thesis/data/askubuntu/test.txt')
@@ -291,5 +294,5 @@ if __name__ == '__main__':
         dev_ids = get_eval_ids(E)
 
         df = make_data_frame_for_tag_training(df, list(test_ids), list(dev_ids))
-        store_df(df, 'data.csv')
+        store_df(df, '/home/christina/Documents/Thesis/data/askubuntu/data_frame_corpus.csv')
 
