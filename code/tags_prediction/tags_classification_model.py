@@ -1,19 +1,19 @@
 import argparse
 import os
 import pickle
-import random
 import sys
 import time
-
+import gzip
 import numpy as np
 import tensorflow as tf
 from prettytable import PrettyTable
 
-import tags_prediction.myio as myio_
+import myio as myio_
 from nn import get_activation_by_name
 from qa import myio
 from utils import load_embedding_iterator
 from utils.statistics import read_df
+from evaluation import Evaluation
 
 
 class Model(object):
@@ -90,19 +90,27 @@ class Model(object):
                 self.b_state = self.b_states_series[:, -1, :]
 
         with tf.name_scope('outputs'):
-            # batch * d
-            h_final = (self.t_state + self.b_state) * 0.5
-            self.h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
-            self.h_final = self.normalize_2d(self.h_final)
 
-            self.w_o = tf.Variable(
-                tf.random_normal([self.args.hidden_dim, self.output_dim], mean=0.0, stddev=0.05),
-                name='weights_out'
-            )
-            self.b_o = tf.Variable(tf.zeros([self.output_dim]), name='bias_out')
+            with tf.name_scope('encodings'):
+                # batch * d
+                h_final = (self.t_state + self.b_state) * 0.5
+                self.h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
+                self.h_final = self.normalize_2d(self.h_final)
+
+            with tf.name_scope("MLP"):
+                self.w_o = tf.Variable(
+                    tf.random_normal([self.args.hidden_dim, self.output_dim], mean=0.0, stddev=0.05),
+                    name='weights_out'
+                )
+                self.b_o = tf.Variable(tf.zeros([self.output_dim]), name='bias_out')
 
             out = tf.matmul(self.h_final, self.w_o) + self.b_o
             self.output = tf.nn.sigmoid(out)
+
+            # for evaluation
+            self.prediction = tf.where(
+                self.output > self.args.threshold, tf.ones_like(self.output), tf.zeros_like(self.output)
+            )
 
             with tf.name_scope('cost'):
                 with tf.name_scope('loss'):
@@ -115,6 +123,7 @@ class Model(object):
                         )
 
                     else:
+                        raise Exception('unimplemented')
                         # todo: check why gives nan
                         # get true and false labels
                         shape = tf.shape(self.target)
@@ -173,76 +182,35 @@ class Model(object):
         s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
         return s
 
-    @staticmethod
-    def precision_recall(output, target, threshold):
-
-        #todo: if threshold = 0.5:
-        # correct_prediction = np.equal(np.round(output), target)
-        # accuracy = np.mean(correct_prediction)
-
-        # print 'output ', np.sum(output > 0.5)
-        # print 'target ', np.sum(target > 0.4)
-
-        predictions = np.where(output > threshold, np.ones_like(output), np.zeros_like(output))
-
-        # true positives
-        tp = np.logical_and(predictions.astype(np.bool), target.astype(np.bool))
-        # false positives
-        fp = np.logical_and(predictions.astype(np.bool), np.logical_not(target.astype(np.bool)))
-        # false negatives
-        fn = np.logical_and(np.logical_not(predictions.astype(np.bool)), target.astype(np.bool))
-
-        if np.sum(np.logical_or(tp, fp).astype(np.int32)) == 0:
-            print 'zero here'
-        if np.sum(np.logical_or(tp, fn).astype(np.int32)) == 0:
-            print 'zero there'
-        pre = np.true_divide(np.sum(tp.astype(np.int32)), np.sum(np.logical_or(tp, fp).astype(np.int32)))
-        rec = np.true_divide(np.sum(tp.astype(np.int32)), np.sum(np.logical_or(tp, fn).astype(np.int32)))
-
-        return round(pre, 4), round(rec, 4)
-
-    @staticmethod
-    def one_error(outputs, targets):
-        cols = np.argmax(outputs, 1)  # top ranked
-        rows = range(outputs.shape[0])
-        result = targets[rows, cols]
-        return np.sum((result == 0).astype(np.int32))
-
-    @staticmethod  # todo: check it
-    def precision_at_k(outputs, targets, k):
-        cols = np.argsort(outputs, 1)[:, :k]
-        rows = range(outputs.shape[0])
-        rel_per_sample = np.clip(np.sum(targets, 1), 0, k)
-        found_per_sample = np.zeros(outputs.shape[0])
-        for sample, c in enumerate(cols):
-            result = targets[rows, cols]
-            found_per_sample[sample] = np.sum(result == 1)
-        return np.mean(found_per_sample/rel_per_sample.astype(np.float32))
-
-    def eval_batch(self, titles, bodies, y_batch, sess):
-        output = sess.run(
-            self.output,
+    def eval_batch(self, titles, bodies, sess):
+        outputs, predictions = sess.run(
+            [self.output, self.prediction],
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.dropout_prob: 0.,
             }
         )
-        pre, rec = self.precision_recall(output, y_batch, self.args.threshold)
-        oe = self.one_error(output, y_batch)
-        return oe, pre, rec
+        return outputs, predictions
+
+        # ev = Evaluation(outputs, predictions, y_batch)
+        # mac_p, mac_r, mac_f1 = ev.precision_recall_fscore(average='macro')
+        # mic_p, mic_r, mic_f1 = ev.precision_recall_fscore(average='micro')
+        # # oe = ev.one_error()
+        # return (mac_p, mac_r, mac_f1), (mic_p, mic_r, mic_f1)
 
     def evaluate(self, dev_batches, sess):
-        oe = []
-        pre = []
-        rec = []
+        outputs, predictions, targets = [], [], []
         for titles_b, bodies_b, tags_b in dev_batches:
-            batch_oe, batch_pre, batch_rec = self.eval_batch(titles_b, bodies_b, tags_b, sess)
-            oe.append(batch_oe), pre.append(batch_pre), rec.append(batch_rec)
-        oe = sum(oe) / len(oe)
-        pre = sum(pre) / len(pre)
-        rec = sum(rec) / len(rec)
-        return oe, pre, rec, 0
+            out, pred = self.eval_batch(titles_b, bodies_b, sess)
+            outputs.append(out)
+            predictions.append(pred)
+            targets.append(tags_b)
+        outputs = np.vstack(outputs)
+        predictions = np.vstack(predictions)
+        targets = np.vstack(targets).astype(np.int32)  # it was dtype object
+        ev = Evaluation(outputs, predictions, targets)
+        return ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')
 
     def train_batch(self, titles, bodies, y_batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
         _, _step, _loss, _cost, _summary = sess.run(
@@ -261,12 +229,16 @@ class Model(object):
         with tf.Session() as sess:
 
             result_table = PrettyTable(
-                ["Epoch", "dev OE", "dev PRE", "dev REC", "dev HL", "dev BP-MLL", "tst OE", "tst PRE", "tst REC", "tst HL", "tst BP-MLL"]
+                ["Epoch", "dev A P", "dev A R", "dev A F1", "dev I P", "dev I R", "dev I F1",
+                 "tst A P", "tst A R", "tst A F1", "tst I P", "tst I R", "tst I F1"]
             )
 
-            dev_OE = dev_PRE = dev_REC = dev_HL = dev_BP_MLL = 0
-            test_OE = test_PRE = test_REC = test_HL = test_BP_MLL = 0
-            best_pre = -1
+            # dev_OE, dev_HL, dev_BP_MLL = 0
+            dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1 = 0, 0, 0, 0, 0, 0
+            # test_OE, test_HL, test_BP_MLL = 0
+            test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1 = 0, 0, 0, 0, 0, 0
+
+            best_dev_performance = -1
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -279,7 +251,8 @@ class Model(object):
                 print 'assigning trained values ...\n'
                 sess.run(assign_ops)
 
-            print("Writing to {}\n".format(self.args.save_dir))
+            if self.args.save_dir != "":
+                print("Writing to {}\n".format(self.args.save_dir))
 
             # Summaries for loss and cost
             loss_summary = tf.summary.scalar("loss", self.loss)
@@ -292,43 +265,44 @@ class Model(object):
 
             if dev:
                 # Dev Summaries
-                dev_oe = tf.placeholder(tf.float32)
-                dev_pre = tf.placeholder(tf.float32)
-                dev_rec = tf.placeholder(tf.float32)
-                dev_hl = tf.placeholder(tf.float32)
+                # dev_oe = tf.placeholder(tf.float32)
+                dev_mac_f1 = tf.placeholder(tf.float32)
+                dev_mic_f1 = tf.placeholder(tf.float32)
+                # dev_hl = tf.placeholder(tf.float32)
                 # dev_bp_mll = tf.placeholder(tf.float32)
-                dev_oe_summary = tf.summary.scalar("dev_oe", dev_oe)
-                dev_pre_summary = tf.summary.scalar("dev_pre", dev_pre)
-                dev_rec_summary = tf.summary.scalar("dev_rec", dev_rec)
-                dev_hl_summary = tf.summary.scalar("dev_hl", dev_hl)
+                # dev_oe_summary = tf.summary.scalar("dev_oe", dev_oe)
+                dev_mac_f1_summary = tf.summary.scalar("dev_mac_f1", dev_mac_f1)
+                dev_mic_f1_summary = tf.summary.scalar("dev_mic_f1", dev_mic_f1)
+                # dev_hl_summary = tf.summary.scalar("dev_hl", dev_hl)
                 # dev_bp_mll_summary = tf.summary.scalar("dev_bp_mll", dev_bp_mll)
                 dev_summary_op = tf.summary.merge(
-                    [dev_oe_summary, dev_pre_summary, dev_rec_summary, dev_hl_summary]#, dev_bp_mll_summary]
+                    [dev_mac_f1_summary, dev_mic_f1_summary]
                 )
                 dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
                 dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
             if test:
                 # Test Summaries
-                test_oe = tf.placeholder(tf.float32)
-                test_pre = tf.placeholder(tf.float32)
-                test_rec = tf.placeholder(tf.float32)
-                test_hl = tf.placeholder(tf.float32)
+                # test_oe = tf.placeholder(tf.float32)
+                test_mac_f1 = tf.placeholder(tf.float32)
+                test_mic_f1 = tf.placeholder(tf.float32)
+                # test_hl = tf.placeholder(tf.float32)
                 # test_bp_mll = tf.placeholder(tf.float32)
-                test_oe_summary = tf.summary.scalar("test_oe", test_oe)
-                test_pre_summary = tf.summary.scalar("test_pre", test_pre)
-                test_rec_summary = tf.summary.scalar("test_rec", test_rec)
-                test_hl_summary = tf.summary.scalar("test_hl", test_hl)
+                # test_oe_summary = tf.summary.scalar("test_oe", test_oe)
+                test_mac_f1_summary = tf.summary.scalar("test_mac_f1", test_mac_f1)
+                test_mic_f1_summary = tf.summary.scalar("test_mic_f1", test_mic_f1)
+                # test_hl_summary = tf.summary.scalar("test_hl", test_hl)
                 # dev_bp_mll_summary = tf.summary.scalar("test_bp_mll", test_bp_mll)
                 test_summary_op = tf.summary.merge(
-                    [test_oe_summary, test_pre_summary, test_rec_summary, test_hl_summary]#, test_bp_mll_summary]
+                    [test_mac_f1_summary, test_mic_f1_summary]
                 )
                 test_summary_dir = os.path.join(self.args.save_dir, "summaries", "test")
                 test_summary_writer = tf.summary.FileWriter(test_summary_dir, sess.graph)
 
-            checkpoint_dir = os.path.join(self.args.save_dir, "checkpoints")
-            # checkpoint_prefix = os.path.join(checkpoint_dir, "model")
-            if not os.path.exists(checkpoint_dir):
-                os.makedirs(checkpoint_dir)
+            if self.args.save_dir != "":
+                checkpoint_dir = os.path.join(self.args.save_dir, "checkpoints")
+                checkpoint_prefix = os.path.join(checkpoint_dir, "model")
+                if not os.path.exists(checkpoint_dir):
+                    os.makedirs(checkpoint_dir)
 
             unchanged = 0
             max_epoch = 50
@@ -345,7 +319,8 @@ class Model(object):
                 for i in xrange(N):
                     titles_b, bodies_b, tag_labels_b = train_batches[i]
                     cur_step, cur_loss, cur_cost = self.train_batch(
-                        titles_b, bodies_b, tag_labels_b, train_op, global_step, train_summary_op, train_summary_writer, sess
+                        titles_b, bodies_b, tag_labels_b,
+                        train_op, global_step, train_summary_op, train_summary_writer, sess
                     )
 
                     train_loss += cur_loss
@@ -356,37 +331,81 @@ class Model(object):
 
                     if i == N-1:  # EVAL
                         if dev:
-                            dev_OE, dev_PRE, dev_REC, dev_HL = self.evaluate(dev, sess)
-                            _dev_sum = sess.run(
-                                dev_summary_op,
-                                {dev_oe: dev_OE, dev_pre: dev_PRE, dev_rec: dev_REC, dev_hl: dev_HL}
-                            )
+                            (dev_MAC_P, dev_MAC_P, dev_MAC_F1), (dev_MIC_P, dev_MIC_R, dev_MIC_F1) = \
+                                self.evaluate(dev, sess)
+                            _dev_sum = sess.run(dev_summary_op, {dev_mac_f1: dev_MAC_F1, dev_mic_f1: dev_MIC_F1})
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
 
                         if test:
-                            test_OE, test_PRE, test_REC, test_HL = self.evaluate(test, sess)
-                            _test_sum = sess.run(
-                                test_summary_op,
-                                {test_oe: test_OE, test_pre: test_PRE, test_rec: test_REC, test_hl: test_HL}
-                            )
+                            (test_MAC_P, test_MAC_P, test_MAC_F1), (test_MIC_P, test_MIC_R, test_MIC_F1) = \
+                                self.evaluate(test, sess)
+                            _test_sum = sess.run(test_summary_op, {test_mac_f1: test_MAC_F1, test_mic_f1: test_MIC_F1})
                             test_summary_writer.add_summary(_test_sum, cur_step)
 
-                        if dev_PRE > best_pre:
+                        # if dev_MIC_P > best_dev_performance:
+                        if dev_MIC_F1 > best_dev_performance:
                             unchanged = 0
-                            best_pre = dev_PRE
+                            # best_dev_performance = dev_MIC_P
+                            best_dev_performance = dev_MIC_F1
                             result_table.add_row(
-                                [epoch, dev_OE, dev_PRE, dev_REC, dev_HL, dev_BP_MLL, test_OE, test_PRE, test_REC, test_HL, test_BP_MLL]
+                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
+                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
                             )
-                            # self.save(sess, checkpoint_prefix, cur_step)
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
 
                         myio.say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tPRE={:.2f},{:.2f}\n".format(
                             epoch,
                             train_cost / (i+1),  # i.e. divided by N training batches
                             train_loss / (i+1),  # i.e. divided by N training batches
-                            dev_PRE,
-                            best_pre
+                            dev_MIC_P,
+                            best_dev_performance
                         ))
                         myio.say("\n{}\n".format(result_table))
+
+    def save(self, sess, path, step):
+        path = "{}_{}_{}".format(path, step, ".pkl.gz")
+        print("Saving model checkpoint to {}\n".format(path))
+        params_values = {}
+        for param_name, param in self.params.iteritems():
+            params_values[param.name] = sess.run(param)
+        # print 'params_dict\n', params_dict
+        with gzip.open(path, "w") as fout:
+            pickle.dump(
+                {
+                    "params_values": params_values,
+                    "args": self.args,
+                    "step": step
+                },
+                fout,
+                protocol=pickle.HIGHEST_PROTOCOL
+            )
+
+    def load_trained_vars(self, path):
+        print("Loading model checkpoint from {}\n".format(path))
+        assert self.args is not None and self.params != {}
+        assign_ops = {}
+        with gzip.open(path) as fin:
+            data = pickle.load(fin)
+            assert self.args.hidden_dim == data["args"].hidden_dim
+            params_values = data['params_values']
+            graph = tf.get_default_graph()
+            for param_name, param_value in params_values.iteritems():
+                variable = graph.get_tensor_by_name(param_name)
+                assign_op = tf.assign(variable, param_value)
+                assign_ops[param_name] = assign_op
+        return assign_ops
+
+    def load_n_set_model(self, path, sess):
+        with gzip.open(path) as fin:
+            data = pickle.load(fin)
+        self.args = data["args"]
+        self.ready()
+        assign_ops = self.load_trained_vars(path)
+        sess.run(tf.global_variables_initializer())
+        print 'assigning trained values ...\n'
+        for param_name, param_assign_op in assign_ops.iteritems():
+            sess.run(param_assign_op)
 
 
 def main(args):
@@ -422,7 +441,7 @@ def main(args):
     print '{} batches of {} instances in dev, {} in test and {} in train.'.format(
         len(dev), args.batch_size, len(test), len(train))
 
-    model = Model(args, embedding_layer, weights=weights if args.reweight else None)
+    model = Model(args, embedding_layer, len(label_tags), weights=weights if args.reweight else None)
     model.ready()
 
     model.train_model(train, dev=dev, test=test)
