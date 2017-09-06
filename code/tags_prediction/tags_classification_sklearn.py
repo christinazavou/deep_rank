@@ -14,6 +14,7 @@ from sklearn.model_selection import PredefinedSplit
 import os
 import numpy as np
 import pandas as pd
+from utils import load_embedding_iterator
 # from sklearn.metrics import coverage_error
 # coverage_error(np.array([[1, 0, 0], [0, 0, 1]]), np.array([[0.75, 0.5, 1], [1, 0.2, 0.1]]))
 # from sklearn.metrics import label_ranking_average_precision_score
@@ -115,43 +116,42 @@ def main():
         x_dev, y_dev = x_dev[0:100], y_dev[0:100]
         x_test, y_test = x_test[0:100], y_test[0:100]
 
+    parameters = {}
+
+    if args.embeddings != "":
+        words = [w for w, v in load_embedding_iterator(args.embeddings)]
+        tfidf = TfidfVectorizer(vocabulary=words)
+    else:
+        if args.predefined:
+            tfidf = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df, ngram_range=(1, args.n_grams))
+        else:
+            tfidf = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df)
+            parameters = {'tfidf__ngram_range': [(1, 1), (1, 2), (1, 3)]}
+
     if args.method == 'logreg':
         clf = OneVsRestClassifier(LogisticRegression(solver='sag', verbose=10), n_jobs=1)
-        if args.predefined:
-            tfidf = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df, ngram_range=(1, args.n_grams))
-        else:
-            tfidf = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df)
-            parameters = {
-                'tfidf__ngram_range': [(1, 1), (1, 2), (1, 3)],
-                "clf__estimator__C": [0.01, 0.1, 1],
-                "clf__estimator__class_weight": ['balanced', None],
-            }
+        parameters.update({
+            "clf__estimator__C": [0.01, 0.1, 1],
+            "clf__estimator__class_weight": ['balanced', None],
+        })
     elif args.method == 'svm':
         clf = OneVsRestClassifier(LinearSVC(verbose=10), n_jobs=1)
-        if args.predefined:
-            tfidf = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df, ngram_range=(1, args.n_grams))
-        else:
-            tfidf = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df)
-            parameters = {
-                'tfidf__ngram_range': [(1, 1), (1, 2), (1, 3)],
-                "clf__estimator__C": [0.01, 0.1, 1],
-                "clf__estimator__class_weight": ['balanced', None],
-            }
+        parameters.update({
+            "clf__estimator__C": [0.01, 0.1, 1],
+            "clf__estimator__class_weight": ['balanced', None],
+        })
     elif args.method == 'randforest':
         if args.predefined:
             clf = OneVsRestClassifier(RandomForestClassifier(verbose=10, criterion="entropy"), n_jobs=1)
-            tfidf = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df, ngram_range=(1, args.n_grams))
         else:
             clf = OneVsRestClassifier(RandomForestClassifier(verbose=10), n_jobs=1)
-            tfidf = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df)
-            parameters = {
-                'tfidf__ngram_range': [(1, 1), (1, 2), (1, 3)],
+            parameters.update({
                 # "clf__estimator__criterion": ["gini", "entropy"],
                 "clf__estimator__criterion": ["entropy"],
                 # "clf__estimator__n_estimators": [10, 50, 100],
-                "clf__estimator__n_estimators": [10, 100],
+                "clf__estimator__n_estimators": [10, 50],
                 # "clf__estimator__class_weight": ['balanced', None]
-            }
+            })
     else:
         raise Exception('unknown method')
 
@@ -191,9 +191,10 @@ if __name__ == '__main__':
     argparser.add_argument("--model_file", type=str)
     argparser.add_argument("--tags_file", type=str)
 
-    argparser.add_argument("--njobs", type=int, default=2)
+    argparser.add_argument("--njobs", type=int, default=3)
     argparser.add_argument("--test", type=bool, default=False)
     argparser.add_argument("--predefined", type=bool, default=False)
+    argparser.add_argument("--embeddings", type=str, default="")
 
     args = argparser.parse_args()
     print args
