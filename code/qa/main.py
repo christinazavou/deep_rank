@@ -12,7 +12,7 @@ import os
 from main_model_bidirectional import Model
 
 
-def main(args):
+def main():
     raw_corpus = myio.read_corpus(args.corpus)
     embedding_layer = myio.create_embedding_layer(
                 raw_corpus,
@@ -98,4 +98,4 @@ if __name__ == "__main__":
     args = argparser.parse_args()
     print args
     print ""
-    main(args)
+    main()

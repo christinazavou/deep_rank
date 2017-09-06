@@ -21,7 +21,8 @@ def get_eval_ids_per_train_rows(train_rows, q_ids_in_eval):
         eval_ids_per_train_row_candidates.append(len(q_ids_in_eval & t_ids))
         t_ids = set(x[1])
         eval_ids_per_train_row_similar.append(len(q_ids_in_eval & t_ids))
-    print 'found ', eval_ids_as_train_queries, ' eval ids as train queries'
+    print 'found ', eval_ids_as_train_queries, ' eval ids as train queries '
+    print 'init train queries: ', len(train_rows)
     return eval_ids_per_train_row_candidates, eval_ids_per_train_row_similar
 
 
@@ -54,7 +55,7 @@ def remake_training_file_for_question_ranking(train_rows, q_ids_in_eval, out_fil
 
 
 if __name__ == '__main__':
-    df = read_df('/home/christina/Documents/Thesis/data/askubuntu/data_frame_corpus.csv')
+    df = read_df('/home/christina/Documents/Thesis/data/askubuntu/additional/data_frame_corpus.csv')
     print 'total ids: ', df.shape[0]
 
     E = read_eval_rows('/home/christina/Documents/Thesis/data/askubuntu/test.txt')
@@ -79,5 +80,5 @@ if __name__ == '__main__':
     # store_df(df, '/home/christina/Documents/Thesis/data/askubuntu/data_frame_corpus.csv')
 
     remake_training_file_for_question_ranking(
-        T, eval_ids, '/home/christina/Documents/Thesis/data/askubuntu/train_random_removed_eval.txt'
+        T, eval_ids, '/home/christina/Documents/Thesis/data/askubuntu/additional/train_random_removed_eval.txt'
     )
