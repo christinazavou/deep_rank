@@ -274,18 +274,32 @@ def make_save_dataframe(infile, outfile, chunk_size=5000):
             init_idx = row + 1
 
 
+def make_truncate(data_frame):
+    data_frame = data_frame.fillna(u'')
+
+    data_frame['body_truncated'] = u''
+    for idx, row in data_frame.iterrows():
+        text = row['body'].split(u' ')[0:100]
+        data_frame.set_value(idx, 'body_truncated', u' '.join(text))
+
+    # for idx, row in df.iterrows():
+    #     print row['body']
+    #     print row['body_truncated']
+    return data_frame
+
+
 if __name__ == '__main__':
     main(
         '/home/christina/Documents/Thesis/data/askubuntu/askubuntu_2014_posts.xml',
-        '/home/christina/Documents/Thesis/data/askubuntu/texts_raw_with_tags.txt'
+        '/home/christina/Documents/Thesis/data/askubuntu/additional/texts_raw_with_tags.txt'
     )
 
     make_save_dataframe(
-        '/home/christina/Documents/Thesis/data/askubuntu/texts_raw_with_tags.txt',
-        '/home/christina/Documents/Thesis/data/askubuntu/data_frame_corpus.csv'
+        '/home/christina/Documents/Thesis/data/askubuntu/additional/texts_raw_with_tags.txt',
+        '/home/christina/Documents/Thesis/data/askubuntu/additional/data_frame_corpus.csv'
     )
 
-    df = read_df('/home/christina/Documents/Thesis/data/askubuntu/data_frame_corpus.csv')
+    df = read_df('/home/christina/Documents/Thesis/data/askubuntu/additional/data_frame_corpus.csv')
 
     if 'type' not in list(df):
         E = read_eval_rows('/home/christina/Documents/Thesis/data/askubuntu/test.txt')
@@ -294,5 +308,7 @@ if __name__ == '__main__':
         dev_ids = get_eval_ids(E)
 
         df = make_data_frame_for_tag_training(df, list(test_ids), list(dev_ids))
-        store_df(df, '/home/christina/Documents/Thesis/data/askubuntu/data_frame_corpus.csv')
+        store_df(df, '/home/christina/Documents/Thesis/data/askubuntu/additional/data_frame_corpus.csv')
 
+        df = make_truncate(df)
+        store_df(df, '/home/christina/Documents/Thesis/data/askubuntu/additional/data_frame_corpus.csv')

@@ -75,7 +75,9 @@ def grid_search(train_x, train_y, dev_x, dev_y, parameters, pipeline):
     ps = PredefinedSplit(test_fold)
 
     # grid_search_tune = GridSearchCV(pipeline, parameters, n_jobs=args.njobs, verbose=10, cv=ps)
-    grid_search_tune = GridSearchCV(pipeline, parameters, n_jobs=args.njobs, verbose=10, cv=3)
+    grid_search_tune = GridSearchCV(
+        pipeline, parameters, n_jobs=args.njobs, verbose=10, cv=3, scoring='f1_micro'
+    )
     # print grid_search_tune.estimator.get_params().keys()
 
     grid_search_tune.fit(tx, ty)
@@ -170,8 +172,12 @@ def evaluate(test_x, test_y, labels, model):
 
 def get_train_test_dev(df, labels):
     data = {}
-    for type_name, group_df in df.groupby('type'):
-        data[type_name] = ((group_df['title'] + u' ' + group_df['body']).values, group_df[labels].values)
+    if args.truncate:
+        for type_name, group_df in df.groupby('type'):
+            data[type_name] = ((group_df['title'] + u' ' + group_df['body_truncated']).values, group_df[labels].values)
+    else:
+        for type_name, group_df in df.groupby('type'):
+            data[type_name] = ((group_df['title'] + u' ' + group_df['body']).values, group_df[labels].values)
     return data['train'], data['dev'], data['test']
 
 
@@ -217,7 +223,7 @@ def main():
 
     print len(x_train), len(x_dev), len(x_test)
 
-    if args.test:
+    if args.testing:
         x_train, y_train = x_train[0:1000], y_train[0:1000]
         x_dev, y_dev = x_dev[0:1000], y_dev[0:1000]
         x_test, y_test = x_test[0:1000], y_test[0:1000]
@@ -247,7 +253,7 @@ def main():
         parameters.update({
             "clf__estimator__kernel": ['linear', 'poly', 'rbf'],
             "clf__estimator__class_weight": ['balanced', None],
-            "clf__estimator__gamma": [0.01, 0.1, 1, 10, 100],
+            # "clf__estimator__gamma": [0.01, 0.1, 1, 10, 100],
             "clf__estimator__C": [0.01, 0.1, 1, 10, 100],
         })
     elif args.method == 'randforest':
@@ -256,11 +262,12 @@ def main():
         else:
             clf = RandomForestClassifier(verbose=10)
             parameters.update({
-                "clf__criterion": ["gini", "entropy"],
-                "clf__n_estimators": [1, 5, 10, 15],
-                "clf__class_weight": ['balanced', None],
-                "clf__max_depth": [5, 10, 15],
-                "clf__min_samples_leaf": [5, 10, 25, 50]
+                # "clf__criterion": ["gini", "entropy"],
+                # "clf__n_estimators": [1, 5, 10, 15],
+                # "clf__class_weight": ['balanced', None],
+                "clf__class_weight": ['balanced'],
+                "clf__max_depth": [5, 15, 30],
+                # "clf__min_samples_leaf": [5, 25, 50, 75]
             })
     else:
         raise Exception('unknown method')
@@ -271,6 +278,9 @@ def main():
 
     if os.path.isfile(args.model_file):
         tuned_model = load_model(args.model_file)
+        if args.method == "randforest":
+            tuned_model.export_graphviz(clf, out_file=args.model_file.replace('.p', '.png'))
+
     else:
         if args.predefined:
             tuned_model = model_fit(x_train, y_train, x_dev, y_dev, clf)
@@ -285,8 +295,8 @@ def main():
     evaluate(x_test, y_test, label_tags, tuned_model)
     print 'EVALUATE ON DEV\n'
     evaluate(x_dev, y_dev, label_tags, tuned_model)
-    # print 'EVALUATE ON TRAIN\n'
-    # evaluate(x_train[0:1000], y_train[0:1000], label_tags, tuned_model)
+    print 'EVALUATE ON TRAIN\n'
+    evaluate(x_train[0:1000], y_train[0:1000], label_tags, tuned_model)
 
 if __name__ == '__main__':
 
@@ -297,14 +307,14 @@ if __name__ == '__main__':
     argparser.add_argument("--max_df", type=float, default=0.75)
     argparser.add_argument("--n_grams", type=int, default=3)
 
-    # argparser.add_argument("--max_seq_len", type=int, default=-1)
+    argparser.add_argument("--truncate", type=bool, default=True)
 
     argparser.add_argument("--method", type=str, default='logreg')
     argparser.add_argument("--model_file", type=str)
     argparser.add_argument("--tags_file", type=str)
 
     argparser.add_argument("--njobs", type=int, default=3)
-    argparser.add_argument("--test", type=bool, default=False)
+    argparser.add_argument("--testing", type=bool, default=False)
     argparser.add_argument("--predefined", type=bool, default=False)
     argparser.add_argument("--param_tune", type=bool, default=False)
     argparser.add_argument("--kselect", type=int, default=0)

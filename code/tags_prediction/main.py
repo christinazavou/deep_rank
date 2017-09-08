@@ -11,7 +11,7 @@ from utils.statistics import read_df
 
 
 # from tags_classification_model import Model
-from tags_classification_bilstm import Model
+from bilstm import Model
 
 
 def main():
