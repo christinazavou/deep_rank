@@ -11,8 +11,8 @@ from utils import load_embedding_iterator
 from utils.statistics import read_df
 
 
-# from tags_classification_model import Model
-from bilstm_model import Model
+# from bilstm_model import Model
+from model import Model
 
 
 def create_embedding_layer(raw_corpus, n_d, embs=None, cut_off=2,
