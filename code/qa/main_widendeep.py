@@ -11,9 +11,7 @@ import os
 import time
 import sys
 from utils import load_embedding_iterator
-import tensorflow as tf
 import cPickle as pickle
-import gzip
 
 
 from main_model_widendeep import Model
