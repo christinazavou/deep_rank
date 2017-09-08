@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 from prettytable import PrettyTable
 
-from nn import get_activation_by_name
+from nn_model import get_activation_by_name
 from qa import myio
 from evaluation import Evaluation
 

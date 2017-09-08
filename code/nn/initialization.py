@@ -1,6 +1,6 @@
 import random
 import numpy as np
-import  tensorflow as tf
+import tensorflow as tf
 
 
 default_rng = np.random.RandomState(random.randint(0, 9999))
