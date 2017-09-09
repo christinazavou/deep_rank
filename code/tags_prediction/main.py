@@ -15,6 +15,53 @@ from utils.statistics import read_df
 from model import Model
 
 
+def baselines_eval(train_data, dev_data, test_data):
+    import numpy as np
+    from sklearn.metrics import precision_recall_fscore_support
+
+    counts_per_class = np.zeros(100)
+
+    training_data = 0
+
+    for train_b in train_data:
+        tags = np.array(train_b[2]).astype(np.float32)
+        training_data += tags.shape[0]
+        count_per_class = tags.sum(axis=0)
+        assert len(count_per_class) == 100
+        counts_per_class += count_per_class
+
+    assert training_data == 159975
+
+    majority_per_class = (counts_per_class > 159975/2).astype(np.int32)
+    prob_per_class = np.round(counts_per_class / 159975.)
+
+    target = []
+    for dev_b in dev_data:
+        target.extend(dev_b[2])
+    target = np.array(target).astype(np.float32)
+    majority_predict = np.tile(majority_per_class, (target.shape[0], 1))
+    prob_predict = np.tile(prob_per_class, (target.shape[0], 1))
+    assert target.shape == majority_predict.shape == prob_predict.shape
+
+    print '\nDEV MACRO EVAL ON MAJORITY PREDICTION\n', precision_recall_fscore_support(target, majority_predict, average='macro')
+    print '\nDEV MICRO EVAL ON MAJORITY PREDICTION\n', precision_recall_fscore_support(target, majority_predict, average='micro')
+    print '\nDEV MACRO EVAL ON PROBABILITY PREDICTION\n', precision_recall_fscore_support(target, prob_predict, average='macro')
+    print '\nDEV MICRO EVAL ON PROBABILITY PREDICTION\n', precision_recall_fscore_support(target, prob_predict, average='micro')
+
+    target = []
+    for test_b in test_data:
+        target.extend(test_b[2])
+    target = np.array(target).astype(np.float32)
+    majority_predict = np.tile(majority_per_class, (target.shape[0], 1))
+    prob_predict = np.tile(prob_per_class, (target.shape[0], 1))
+    assert target.shape == majority_predict.shape == prob_predict.shape
+
+    print '\nTEST MACRO EVAL ON MAJORITY PREDICTION\n', precision_recall_fscore_support(target, majority_predict, average='macro')
+    print '\nTEST MICRO EVAL ON MAJORITY PREDICTION\n', precision_recall_fscore_support(target, majority_predict, average='micro')
+    print '\nTEST MACRO EVAL ON PROBABILITY PREDICTION\n', precision_recall_fscore_support(target, prob_predict, average='macro')
+    print '\nTEST MICRO EVAL ON PROBABILITY PREDICTION\n', precision_recall_fscore_support(target, prob_predict, average='micro')
+
+
 def create_embedding_layer(raw_corpus, n_d, embs=None, cut_off=2,
                            unk="<unk>", padding="<padding>", fix_init_embs=True):
 
@@ -67,6 +114,8 @@ def main():
     train = myio.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id, pad_left=not args.average)
     print '{} batches of {} instances in dev, {} in test and {} in train.'.format(
         len(dev), args.batch_size, len(test), len(train))
+
+    # baselines_eval(train, dev, test)
 
     model = Model(args, embedding_layer, len(label_tags), weights=weights if args.reweight else None)
     model.ready()

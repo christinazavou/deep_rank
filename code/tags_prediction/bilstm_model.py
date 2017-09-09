@@ -33,6 +33,9 @@ class Model(object):
 
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
 
+        self.SLT = self._find_sequence_length(self.titles_words_ids_placeholder)
+        self.SLB = self._find_sequence_length(self.bodies_words_ids_placeholder)
+
         with tf.name_scope('embeddings'):
             self.titles = tf.nn.embedding_lookup(self.embeddings, self.titles_words_ids_placeholder)
             self.bodies = tf.nn.embedding_lookup(self.embeddings, self.bodies_words_ids_placeholder)
@@ -51,45 +54,54 @@ class Model(object):
 
         with tf.name_scope('LSTM'):
 
-            def lstm_cell():
+            def lstm_cell(state_size):
                 _cell = tf.nn.rnn_cell.LSTMCell(
-                    self.args.hidden_dim, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
+                    state_size, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
                 )
+                # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
                 return _cell
 
-            cell = tf.nn.rnn_cell.MultiRNNCell(
-                [lstm_cell() for _ in range(self.args.depth)]
-            )
+            forward_cell = lstm_cell(self.args.hidden_dim/2 if self.args.average == 0 else self.args.hidden_dim)
+            backward_cell = lstm_cell(self.args.hidden_dim/2 if self.args.average == 0 else self.args.hidden_dim)
 
         with tf.name_scope('titles_output'):
-            self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(cell, self.titles, dtype=tf.float32)
+            self.t_outputs, self.t_state = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=forward_cell,
+                cell_bw=backward_cell,
+                inputs=self.titles,
+                dtype=tf.float32,
+                sequence_length=self.SLT
+            )
+            forw_t_state, back_t_state = self.t_state
 
-            if self.args.normalize:
-                self.t_states_series = self.normalize_3d(self.t_states_series)
-
-            if self.args.average:
-                self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
+            if self.args.average == 0:
+                self.t_state_vec = tf.concat([forw_t_state[1], back_t_state[1]], axis=1)
             else:
-                self.t_state = self.t_states_series[:, -1, :]
+                self.t_state_vec = (forw_t_state[1] + back_t_state[1]) / 2.
 
         with tf.name_scope('bodies_output'):
-            self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(cell, self.bodies, dtype=tf.float32)
+            self.b_outputs, self.b_state = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=forward_cell,
+                cell_bw=backward_cell,
+                inputs=self.bodies,
+                dtype=tf.float32,
+                sequence_length=self.SLB
+            )
 
-            if self.args.normalize:
-                self.b_states_series = self.normalize_3d(self.b_states_series)
+            forw_b_state, back_b_state = self.b_state
 
-            if self.args.average:
-                self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
+            if self.args.average == 0:
+                self.b_state_vec = tf.concat([forw_b_state[1], back_b_state[1]], axis=1)
             else:
-                self.b_state = self.b_states_series[:, -1, :]
+                self.b_state_vec = (forw_b_state[1] + back_b_state[1]) * 0.5
 
         with tf.name_scope('outputs'):
 
             with tf.name_scope('encodings'):
                 # batch * d
-                h_final = (self.t_state + self.b_state) * 0.5
-                self.h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
-                self.h_final = self.normalize_2d(self.h_final)
+                h_final = (self.t_state_vec + self.b_state_vec) * 0.5
+                h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
+                self.h_final = self.normalize_2d(h_final)
 
             with tf.name_scope("MLP"):
                 self.w_o = tf.Variable(
@@ -419,3 +431,8 @@ class Model(object):
         for param_name, param_assign_op in assign_ops.iteritems():
             sess.run(param_assign_op)
 
+    def _find_sequence_length(self, ids):
+        s = tf.not_equal(ids, self.padding_id)
+        s = tf.cast(s, tf.int32)
+        s = tf.reduce_sum(s, axis=1)
+        return s
