@@ -6,12 +6,6 @@ import time
 import os
 
 
-# from main_model import Model
-# from main_model_nostate import Model
-# from main_model_1layer import Model
-from main_model_bidirectional import Model
-
-
 def main():
     raw_corpus = myio.read_corpus(args.corpus)
     embedding_layer = myio.create_embedding_layer(
@@ -29,6 +23,13 @@ def main():
 
     if args.reweight:
         weights = myio.create_idf_weights(args.corpus, embedding_layer)
+
+    if args.layer == "lstm":
+        from main_model import Model
+        # from main_model_nostate import Model
+        # from main_model_1layer import Model
+    elif args.layer == "bilstm":
+        from main_model_bidirectional import Model
 
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
@@ -88,6 +89,7 @@ if __name__ == "__main__":
     argparser.add_argument("--max_epoch", type=int, default=50)
     argparser.add_argument("--normalize", type=int, default=1)
     argparser.add_argument("--reweight", type=int, default=1)
+    argparser.add_argument("--layer", type=str, default="lstm")
 
     argparser.add_argument("--load_pretrain", type=str, default="")
 
