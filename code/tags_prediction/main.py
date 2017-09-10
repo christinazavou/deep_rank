@@ -11,10 +11,6 @@ from utils import load_embedding_iterator
 from utils.statistics import read_df
 
 
-# from bilstm_model import Model
-from model import Model
-
-
 def baselines_eval(train_data, dev_data, test_data):
     import numpy as np
     from sklearn.metrics import precision_recall_fscore_support
@@ -109,6 +105,11 @@ def main():
     if args.reweight:
         weights = myio.create_idf_weights(args.corpus, embedding_layer, with_tags=True)
 
+    if args.layer == "lstm":
+        from model import Model
+    elif args.layer == "bilstm":
+        from bilstm_model import Model
+
     dev = myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id, pad_left=not args.average)
     test = myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id, pad_left=not args.average)
     train = myio.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id, pad_left=not args.average)
@@ -119,6 +120,8 @@ def main():
 
     model = Model(args, embedding_layer, len(label_tags), weights=weights if args.reweight else None)
     model.ready()
+
+    print 'total params: ', model.num_parameters()
 
     model.train_model(train, dev=dev, test=test)
 
@@ -144,6 +147,7 @@ if __name__ == '__main__':
     argparser.add_argument("--normalize", type=int, default=1)
     argparser.add_argument("--average", type=int, default=0)
     argparser.add_argument("--depth", type=int, default=1)
+    argparser.add_argument("--layer", type=str, default="lstm")
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

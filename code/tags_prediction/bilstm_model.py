@@ -436,3 +436,14 @@ class Model(object):
         s = tf.cast(s, tf.int32)
         s = tf.reduce_sum(s, axis=1)
         return s
+
+    def num_parameters(self):
+        total_parameters = 0
+        for param_name, param in self.params.iteritems():
+            # shape is an array of tf.Dimension
+            shape = param.get_shape()
+            variable_parameters = 1
+            for dim in shape:
+                variable_parameters *= dim.value
+            total_parameters += variable_parameters
+        return total_parameters

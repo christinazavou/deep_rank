@@ -40,6 +40,8 @@ def main():
     model = Model(args, embedding_layer, weights=weights if args.reweight else None)
     model.ready()
 
+    print 'total params: ', model.num_parameters()
+
     assign_ops = model.load_trained_vars(args.load_pretrain) if args.load_pretrain else None
 
     if args.train:

@@ -373,3 +373,15 @@ class Model(object):
         print 'assigning trained values ...\n'
         for param_name, param_assign_op in assign_ops.iteritems():
             sess.run(param_assign_op)
+
+    def num_parameters(self):
+        total_parameters = 0
+        for param_name, param in self.params.iteritems():
+            # shape is an array of tf.Dimension
+            shape = param.get_shape()
+            variable_parameters = 1
+            for dim in shape:
+                variable_parameters *= dim.value
+            total_parameters += variable_parameters
+        return total_parameters
+
