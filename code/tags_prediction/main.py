@@ -109,6 +109,8 @@ def main():
         from model import Model
     elif args.layer == "bilstm":
         from bilstm_model import Model
+    elif args.layer == "cnn":
+        from cnn_model import Model
 
     dev = myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id, pad_left=not args.average)
     test = myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id, pad_left=not args.average)

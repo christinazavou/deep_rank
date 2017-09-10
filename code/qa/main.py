@@ -30,6 +30,8 @@ def main():
         # from main_model_1layer import Model
     elif args.layer == "bilstm":
         from main_model_bidirectional import Model
+    elif args.layer == "cnn":
+        from main_model_cnn import Model
 
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
