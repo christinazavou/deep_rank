@@ -7,16 +7,10 @@ import numpy as np
 from evaluation import Evaluation
 import tensorflow as tf
 
-# todo: ajust
-# from main_model import Model
-# from main_model_nostate import Model
-# from main_model_1layer import Model
-from main_model_bidirectional import Model
-
 
 class QRAPI:
 
-    def __init__(self, model_path, corpus_path, emb_path, session):
+    def __init__(self, model_path, corpus_path, emb_path, session, layer='lstm'):
         raw_corpus = myio.read_corpus(corpus_path)
         embedding_layer = myio.create_embedding_layer(
                     raw_corpus,
@@ -29,6 +23,15 @@ class QRAPI:
                 embedding_layer.n_V,
                 len(raw_corpus)
             ))
+
+        if layer == 'lstm':
+            from main_model import Model
+            # from main_model_nostate import Model
+            # from main_model_1layer import Model
+        elif layer == 'bilstm':
+            from main_model_bidirectional import Model
+        elif layer == 'cnn':
+            from main_model_cnn import Model
 
         # model = Model(args=None, embedding_layer=embedding_layer,
         #             weights=weights)
@@ -106,12 +109,13 @@ if __name__ == '__main__':
     argparser.add_argument("--emb_path", type=str, default="")
     argparser.add_argument("--dev", type=str, default="")
     argparser.add_argument("--results_file", type=str, default="")
+    argparser.add_argument("--layer", type=str, default="lstm")
     args = argparser.parse_args()
     print '\n', args, '\n'
 
     with tf.Session() as sess:
 
-        myqrapi = QRAPI(args.model_path, args.corpus_path, args.emb_path, sess)
+        myqrapi = QRAPI(args.model_path, args.corpus_path, args.emb_path, sess, args.layer)
 
         raw_corpus = myio.read_corpus(args.corpus_path)
         embedding_layer = myqrapi.model.embedding_layer
