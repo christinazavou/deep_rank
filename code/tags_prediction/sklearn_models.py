@@ -17,6 +17,7 @@ import scipy.sparse
 from sklearn.svm import SVC
 from datetime import datetime
 from utils import load_embedding_iterator
+from sklearn.svm import LinearSVC
 
 
 def grid_search(train_x, train_y, dev_x, dev_y, parameters, pipeline):
@@ -72,7 +73,7 @@ def get_train_test_dev(df, labels):
 
 def save_model(clf, filename):
     print 'saving...'
-    pickle.dump(clf, open(filename, 'wb'))
+    pickle.dump(clf, open(filename, 'wb'))  #todo: protocol=2
 
 
 def load_model(filename):
@@ -126,7 +127,7 @@ def main():
 
     print len(x_train), len(x_dev), len(x_test)
 
-    if args.testing:
+    if args.test:
         x_train, y_train = x_train[0:1000], y_train[0:1000]
         x_dev, y_dev = x_dev[0:1000], y_dev[0:1000]
         x_test, y_test = x_test[0:1000], y_test[0:1000]
@@ -141,7 +142,12 @@ def main():
         x_dev = make_embedded_representations(vocab, x_dev)
         x_test = make_embedded_representations(vocab, x_test)
     else:
-        tf_idf_vec = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df, ngram_range=(1, args.n_grams))
+        if args.given_vocab:
+            vocab = [w for w, v in load_embedding_iterator('/home/christina/Documents/Thesis/data/askubuntu/vector/vectors_pruned.200.txt.gz')]
+            tf_idf_vec = TfidfVectorizer(vocabulary=vocab)
+        else:
+            tf_idf_vec = TfidfVectorizer(min_df=args.cut_off, max_df=args.max_df, ngram_range=(1, args.n_grams))
+
         x_train = tf_idf_vec.fit_transform(x_train)
         if args.kselect:
             features = feature_selection(x_train, y_train, K=args.kselect, chi2_method=args.chi2)
@@ -169,8 +175,14 @@ def main():
             # "estimator__class_weight": ['balanced', None],
             "estimator__class_weight": ['balanced'],
             # "estimator__gamma": [0.01, 0.1, 1, 10, 100],
-            "estimator__gamma": [0.1, 1, 10],
+            "estimator__gamma": [1],
             # "estimator__C": [0.01, 0.1, 1, 10, 100],
+        })
+    elif args.method == 'linearsvm':
+        clf = OneVsRestClassifier(LinearSVC(verbose=10), n_jobs=1)
+        parameters.update({
+            "estimator__class_weight": ['balanced', None],
+            "estimator__C": [1],
         })
     elif args.method == 'randforest':
         if args.predefined:
@@ -211,27 +223,28 @@ if __name__ == '__main__':
 
     argparser = argparse.ArgumentParser(sys.argv[0])
     argparser.add_argument("--df_path", type=str)
+    argparser.add_argument("--tags_file", type=str)
 
     argparser.add_argument("--cut_off", type=int, default=5)
     argparser.add_argument("--max_df", type=float, default=0.75)
     argparser.add_argument("--n_grams", type=int, default=3)
 
-    argparser.add_argument("--truncate", type=bool, default=True)
+    argparser.add_argument("--truncate", type=int, default=1)
 
     argparser.add_argument("--method", type=str, default='logreg')
     argparser.add_argument("--model_file", type=str)
-    argparser.add_argument("--tags_file", type=str)
 
     argparser.add_argument("--njobs", type=int, default=3)
-    argparser.add_argument("--testing", type=bool, default=False)
-    argparser.add_argument("--predefined", type=bool, default=False)
-    argparser.add_argument("--param_tune", type=bool, default=False)
+    argparser.add_argument("--test", type=int, default=0)
+    argparser.add_argument("--predefined", type=int, default=0)
+    argparser.add_argument("--param_tune", type=int, default=0)
     argparser.add_argument("--kselect", type=int, default=0)
 
     argparser.add_argument("--msl", type=int, default=1)
     argparser.add_argument("--n", type=int, default=10)
-    argparser.add_argument("--chi2", type=bool, default=True)
-    argparser.add_argument("--embedded", type=bool, default=False)
+    argparser.add_argument("--chi2", type=int, default=1)
+    argparser.add_argument("--embedded", type=int, default=0)
+    argparser.add_argument("--given_vocab", type=int, default=0)
 
     args = argparser.parse_args()
     print args
