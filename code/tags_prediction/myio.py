@@ -55,6 +55,28 @@ def map_corpus(raw_corpus, embedding_layer, ids_corpus_tags, max_len=100):
     return ids_corpus
 
 
+def map_corpus2(raw_corpus, embedding_layer, tags_selected, max_len=100):
+    # keys in ids_corpus_tags are int type and in raw_corpus are str type
+
+    from sklearn.preprocessing import MultiLabelBinarizer
+    mlb = MultiLabelBinarizer(classes=tags_selected)
+    mlb.fit(['no_tag'])
+
+    ids_corpus = {}
+    for id, pair in raw_corpus.iteritems():
+        item = (embedding_layer.map_to_ids(pair[0], filter_oov=True),
+                embedding_layer.map_to_ids(pair[1], filter_oov=True)[:max_len],
+                mlb.transform([set(pair[2]) & set(tags_selected)]))
+        # if len(item[0]) == 0:
+        #    say("empty title after mapping to IDs. Doc No.{}\n".format(id))
+        #    continue
+        ids_corpus[id] = item
+
+    # print ' ids corpus keys : \n', ids_corpus.keys()[0:3]
+    # print ' ids corpus values : \n', ids_corpus.values()[0:3]
+    return ids_corpus
+
+
 def create_idf_weights(corpus_path, embedding_layer, with_tags=False):
     vectorizer = TfidfVectorizer(min_df=1, ngram_range=(1, 1), binary=False)
 

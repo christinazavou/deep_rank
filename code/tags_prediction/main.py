@@ -58,48 +58,35 @@ def baselines_eval(train_data, dev_data, test_data):
     print '\nTEST MICRO EVAL ON PROBABILITY PREDICTION\n', precision_recall_fscore_support(target, prob_predict, average='micro')
 
 
-def create_embedding_layer(raw_corpus, n_d, embs=None, cut_off=2,
-                           unk="<unk>", padding="<padding>", fix_init_embs=True):
+def create_embedding_layer(n_d, embs=None, unk="<unk>", padding="<padding>", fix_init_embs=True):
 
-    cnt = Counter(w for id, pair in raw_corpus.iteritems() for x in pair for w in x)
-    cnt[unk] = cut_off + 1
-    cnt[padding] = cut_off + 1
     embedding_layer = EmbeddingLayer(
             n_d=n_d,
-            # vocab=(w for w,c in cnt.iteritems() if c > cut_off),
             vocab=[unk, padding],
             embs=embs,
             fix_init_embs=fix_init_embs
         )
-    # print embedding_layer.oov_id
-    # print embedding_layer.vocab_map.keys()[0:5]
-    # print embedding_layer.embeddings
-    # print embedding_layer.embeddings_trainable
     return embedding_layer
 
 
 def main():
+    s_time = time.time()
     df = read_df(args.df_path)
     df = df.fillna(u'')
 
     label_tags = pickle.load(open(args.tags_file, 'rb'))
 
     raw_corpus = myio.read_corpus(args.corpus, with_tags=True)
+
     embedding_layer = create_embedding_layer(
-                raw_corpus,
-                n_d=240,
-                cut_off=1,
-                embs=load_embedding_iterator(args.embeddings) if args.embeddings else None
-            )
+        n_d=240,
+        embs=load_embedding_iterator(args.embeddings) if args.embeddings else None
+    )
 
-    ids_corpus_tags = myio.make_tag_labels(df, label_tags)
+    ids_corpus = myio.map_corpus2(raw_corpus, embedding_layer, label_tags, max_len=args.max_seq_len)
 
-    ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, ids_corpus_tags, max_len=args.max_seq_len)
+    print("vocab size={}, corpus size={}\n".format(embedding_layer.n_V, len(raw_corpus)))
 
-    print("vocab size={}, corpus size={}\n".format(
-            embedding_layer.n_V,
-            len(raw_corpus)
-        ))
     padding_id = embedding_layer.vocab_map["<padding>"]
 
     if args.reweight:
@@ -117,6 +104,8 @@ def main():
     train = myio.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id, pad_left=not args.average)
     print '{} batches of {} instances in dev, {} in test and {} in train.'.format(
         len(dev), args.batch_size, len(test), len(train))
+
+    print time.time() - s_time
 
     # baselines_eval(train, dev, test)
 
