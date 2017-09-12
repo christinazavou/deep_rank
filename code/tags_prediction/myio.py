@@ -64,9 +64,11 @@ def map_corpus2(raw_corpus, embedding_layer, tags_selected, max_len=100):
 
     ids_corpus = {}
     for id, pair in raw_corpus.iteritems():
-        item = (embedding_layer.map_to_ids(pair[0], filter_oov=True),
-                embedding_layer.map_to_ids(pair[1], filter_oov=True)[:max_len],
-                mlb.transform([set(pair[2]) & set(tags_selected)]))
+        item = (
+            embedding_layer.map_to_ids(pair[0], filter_oov=True),
+            embedding_layer.map_to_ids(pair[1], filter_oov=True)[:max_len],
+            mlb.transform([set(pair[2]) & set(tags_selected)])[0]
+        )
         # if len(item[0]) == 0:
         #    say("empty title after mapping to IDs. Doc No.{}\n".format(id))
         #    continue

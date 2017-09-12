@@ -96,7 +96,7 @@ print_scores(R)
 
 if args.save_ids != "":
     ids_not_found = analyze_bad_queries(R, args.results_file)
-    pickle.dump(ids_not_found, open(args.save_ids, 'wb'))
+    pickle.dump(ids_not_found, open(args.save_ids, 'wb')) #todo protocol=2
 else:
     assert args.read_ids != ""
     ids_to_check = pickle.load(open(args.read_ids, 'rb'))

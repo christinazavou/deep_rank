@@ -294,7 +294,7 @@ def main(args):
                     sum(len(x[0].ravel())+len(x[1].ravel()) for x in train_batches),
                     sum(len(x[2].ravel()) for x in train_batches)
                 ))
-            pickle.dump(train_batches, open('/home/christina/Documents/Thesis/deep_rank/train_batches.pkl', 'wb'))
+            pickle.dump(train_batches, open('/home/christina/Documents/Thesis/deep_rank/train_batches.pkl', 'wb')) #todo: protocol=2
 
         model.train_model(
             train_batches,

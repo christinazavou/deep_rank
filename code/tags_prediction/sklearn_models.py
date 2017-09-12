@@ -181,8 +181,8 @@ def main():
     elif args.method == 'linearsvm':
         clf = OneVsRestClassifier(LinearSVC(verbose=10), n_jobs=1)
         parameters.update({
-            "estimator__class_weight": ['balanced', None],
-            "estimator__C": [1],
+            # "estimator__class_weight": ['balanced', None],
+            "estimator__C": [0.001, 0.01, 0.1, 0.5, 1, 5, 10, 100],
         })
     elif args.method == 'randforest':
         if args.predefined:
@@ -194,14 +194,15 @@ def main():
                 # "n_estimators": [1, 5, 10, 15],
                 # "class_weight": ['balanced', None],
                 # "min_samples_leaf": [2, 5, 25, 50]
-                "class_weight": ['balanced'],
-                "max_depth": [50],
-                "min_samples_leaf": [25, 50]
+                # "class_weight": ['balanced'],
+                "max_depth": [50, 60, 70],
+                "min_samples_leaf": [2, 5, 10]
             })
     else:
         raise Exception('unknown method')
 
     print 'parameters: ', parameters
+    print 'model ', clf
 
     if os.path.isfile(args.model_file):
         tuned_model = load_model(args.model_file)
@@ -213,8 +214,6 @@ def main():
     evaluate(x_test, y_test, label_tags, tuned_model)
     print 'EVALUATE ON DEV\n'
     evaluate(x_dev, y_dev, label_tags, tuned_model)
-    print 'EVALUATE ON TRAIN\n'
-    evaluate(x_train[0:1000], y_train[0:1000], label_tags, tuned_model)
 
     print 'Finished at: ', str(datetime.now())
 

@@ -84,14 +84,14 @@ if __name__ == '__main__':
 
     # VARIABLES
     DIR = '/home/christina/Documents/Thesis/data/askubuntu/additional/'
-    NUM = 100
+    NUM = 2000
     # -----------------------------------------------------------------
 
-    df = read_df(os.path.join(DIR, 'data_frame_corpus.csv'))
+    df = read_df(os.path.join(DIR, 'data_frame_corpus_str.csv'))
     df = df.fillna(u'')
     print 'num of questions ', df.shape[0]
 
-    tags_set = set(list(df)) - {'id', 'title', 'body', 'tags', 'type'}
+    tags_set = set(list(df)) - {'id', 'title', 'body', 'tags', 'type', 'body_truncated'}
     print len(tags_set), ' tags: ', tags_set
 
     hist_num_of_tags(df,)
