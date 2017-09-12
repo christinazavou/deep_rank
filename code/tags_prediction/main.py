@@ -147,7 +147,6 @@ if __name__ == '__main__':
     argparser.add_argument("--save_dir", type=str, default=out_dir)
     argparser.add_argument("--tags_file", type=str)
 
-    argparser.add_argument("--loss_type", type=str, default='xentropy')
     argparser.add_argument("--threshold", type=float, default=0.5)
 
     args = argparser.parse_args()

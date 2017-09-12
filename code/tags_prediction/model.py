@@ -38,6 +38,7 @@ class Model(object):
             self.bodies = tf.nn.embedding_lookup(self.embeddings, self.bodies_words_ids_placeholder)
 
             if self.weights is not None:
+                print 'weighting the embeddings...'
                 titles_weights = tf.nn.embedding_lookup(self.weights, self.titles_words_ids_placeholder)
                 titles_weights = tf.expand_dims(titles_weights, axis=2)
                 self.titles = self.titles * titles_weights
@@ -109,41 +110,11 @@ class Model(object):
             with tf.name_scope('cost'):
                 with tf.name_scope('loss'):
 
-                    if self.args.loss_type == 'xentropy':
-                        self.loss = -tf.reduce_sum(
-                            (self.target * tf.log(self.output + 1e-9)) + (
-                            (1 - self.target) * tf.log(1 - self.output + 1e-9)),
-                            name='cross_entropy'
-                        )
-
-                    else:
-                        raise Exception('unimplemented')
-                        # todo: check why gives nan
-                        # get true and false labels
-                        shape = tf.shape(self.target)
-                        y_i = tf.equal(self.target, tf.ones(shape))
-                        y_i_bar = tf.not_equal(self.target, tf.ones(shape))
-
-                        # get indices to check
-                        truth_matrix = tf.to_float(tf.logical_and(tf.expand_dims(y_i, 2), tf.expand_dims(y_i_bar, 1)))
-
-                        # calculate all exp'd differences
-                        sub_matrix = tf.subtract(tf.expand_dims(self.output, 2), tf.expand_dims(self.output, 1))
-
-                        exp_matrix = tf.exp(tf.negative(sub_matrix))
-
-                        # check which differences to consider and sum them
-                        sparse_matrix = tf.multiply(exp_matrix, truth_matrix)
-                        sums = tf.reduce_sum(sparse_matrix, axis=[1, 2])
-
-                        # get normalizing terms and apply them
-                        y_i_sizes = tf.reduce_sum(tf.to_float(y_i), axis=1)
-                        y_i_bar_sizes = tf.reduce_sum(tf.to_float(y_i_bar), axis=1)
-                        normalizers = tf.multiply(y_i_sizes, y_i_bar_sizes)
-                        results = tf.divide(sums, normalizers)
-
-                        # sum over samples
-                        self.loss = tf.reduce_sum(results)
+                    self.loss = -tf.reduce_sum(
+                        (self.target * tf.log(self.output + 1e-9)) + (
+                        (1 - self.target) * tf.log(1 - self.output + 1e-9)),
+                        name='cross_entropy'
+                    )
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -187,12 +158,6 @@ class Model(object):
         )
         return outputs, predictions
 
-        # ev = Evaluation(outputs, predictions, y_batch)
-        # mac_p, mac_r, mac_f1 = ev.precision_recall_fscore(average='macro')
-        # mic_p, mic_r, mic_f1 = ev.precision_recall_fscore(average='micro')
-        # # oe = ev.one_error()
-        # return (mac_p, mac_r, mac_f1), (mic_p, mic_r, mic_f1)
-
     def evaluate(self, dev_batches, sess):
         outputs, predictions, targets = [], [], []
         for titles_b, bodies_b, tags_b in dev_batches:
@@ -227,9 +192,7 @@ class Model(object):
                  "tst A P", "tst A R", "tst A F1", "tst I P", "tst I R", "tst I F1"]
             )
 
-            # dev_OE, dev_HL, dev_BP_MLL = 0
             dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1 = 0, 0, 0, 0, 0, 0
-            # test_OE, test_HL, test_BP_MLL = 0
             test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1 = 0, 0, 0, 0, 0, 0
 
             best_dev_performance = -1
@@ -248,11 +211,9 @@ class Model(object):
             if self.args.save_dir != "":
                 print("Writing to {}\n".format(self.args.save_dir))
 
-            # Summaries for loss and cost
+            # Train Summaries
             loss_summary = tf.summary.scalar("loss", self.loss)
             cost_summary = tf.summary.scalar("cost", self.cost)
-
-            # Train Summaries
             train_summary_op = tf.summary.merge([loss_summary, cost_summary])
             train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
@@ -261,20 +222,23 @@ class Model(object):
                 # Dev Summaries
                 dev_mac_p = tf.placeholder(tf.float32)
                 dev_mic_p = tf.placeholder(tf.float32)
-                dev_mac_r = tf.placeholder(tf.float32)
-                dev_mic_r = tf.placeholder(tf.float32)
-                dev_mac_f1 = tf.placeholder(tf.float32)
-                dev_mic_f1 = tf.placeholder(tf.float32)
                 dev_mac_p_summary = tf.summary.scalar("dev_mac_p", dev_mac_p)
                 dev_mic_p_summary = tf.summary.scalar("dev_mic_p", dev_mic_p)
+
+                dev_mac_r = tf.placeholder(tf.float32)
+                dev_mic_r = tf.placeholder(tf.float32)
                 dev_mac_r_summary = tf.summary.scalar("dev_mac_r", dev_mac_r)
                 dev_mic_r_summary = tf.summary.scalar("dev_mic_r", dev_mic_r)
+
+                dev_mac_f1 = tf.placeholder(tf.float32)
+                dev_mic_f1 = tf.placeholder(tf.float32)
                 dev_mac_f1_summary = tf.summary.scalar("dev_mac_f1", dev_mac_f1)
                 dev_mic_f1_summary = tf.summary.scalar("dev_mic_f1", dev_mic_f1)
+
                 dev_summary_op = tf.summary.merge(
-                    [dev_mac_f1_summary, dev_mic_f1_summary,
-                     dev_mac_p_summary, dev_mic_p_summary,
-                     dev_mac_r_summary, dev_mic_r_summary]
+                    [dev_mac_p_summary, dev_mic_p_summary,
+                     dev_mac_r_summary, dev_mic_r_summary,
+                     dev_mac_f1_summary, dev_mic_f1_summary]
                 )
                 dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
                 dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
@@ -282,20 +246,23 @@ class Model(object):
                 # Test Summaries
                 test_mac_p = tf.placeholder(tf.float32)
                 test_mic_p = tf.placeholder(tf.float32)
-                test_mac_r = tf.placeholder(tf.float32)
-                test_mic_r = tf.placeholder(tf.float32)
-                test_mac_f1 = tf.placeholder(tf.float32)
-                test_mic_f1 = tf.placeholder(tf.float32)
                 test_mac_p_summary = tf.summary.scalar("test_mac_p", test_mac_p)
                 test_mic_p_summary = tf.summary.scalar("test_mic_p", test_mic_p)
+
+                test_mac_r = tf.placeholder(tf.float32)
+                test_mic_r = tf.placeholder(tf.float32)
                 test_mac_r_summary = tf.summary.scalar("test_mac_r", test_mac_r)
                 test_mic_r_summary = tf.summary.scalar("test_mic_r", test_mic_r)
+
+                test_mac_f1 = tf.placeholder(tf.float32)
+                test_mic_f1 = tf.placeholder(tf.float32)
                 test_mac_f1_summary = tf.summary.scalar("test_mac_f1", test_mac_f1)
                 test_mic_f1_summary = tf.summary.scalar("test_mic_f1", test_mic_f1)
+
                 test_summary_op = tf.summary.merge(
-                    [test_mac_f1_summary, test_mic_f1_summary,
-                     test_mac_p_summary, test_mic_p_summary,
-                     test_mac_r_summary, test_mic_r_summary]
+                    [test_mac_p_summary, test_mic_p_summary,
+                     test_mac_r_summary, test_mic_r_summary,
+                     test_mac_f1_summary, test_mic_f1_summary]
                 )
                 test_summary_dir = os.path.join(self.args.save_dir, "summaries", "test")
                 test_summary_writer = tf.summary.FileWriter(test_summary_dir, sess.graph)
@@ -333,7 +300,7 @@ class Model(object):
 
                     if i == N-1:  # EVAL
                         if dev:
-                            (dev_MAC_P, dev_MAC_P, dev_MAC_F1), (dev_MIC_P, dev_MIC_R, dev_MIC_F1) = \
+                            (dev_MAC_P, dev_MAC_R, dev_MAC_F1), (dev_MIC_P, dev_MIC_R, dev_MIC_F1) = \
                                 self.evaluate(dev, sess)
                             _dev_sum = sess.run(
                                 dev_summary_op,
@@ -344,7 +311,7 @@ class Model(object):
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
 
                         if test:
-                            (test_MAC_P, test_MAC_P, test_MAC_F1), (test_MIC_P, test_MIC_R, test_MIC_F1) = \
+                            (test_MAC_P, test_MAC_R, test_MAC_F1), (test_MIC_P, test_MIC_R, test_MIC_F1) = \
                                 self.evaluate(test, sess)
                             _test_sum = sess.run(
                                 test_summary_op,
@@ -387,7 +354,8 @@ class Model(object):
                 {
                     "params_values": params_values,
                     "args": self.args,
-                    "step": step
+                    "step": step,
+                    "output_dim": self.output_dim
                 },
                 fout,
                 protocol=pickle.HIGHEST_PROTOCOL
@@ -400,6 +368,7 @@ class Model(object):
         with gzip.open(path) as fin:
             data = pickle.load(fin)
             assert self.args.hidden_dim == data["args"].hidden_dim
+            # assert self.output_dim == data['output_dim'] todo: add it ?
             params_values = data['params_values']
             graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
@@ -412,11 +381,13 @@ class Model(object):
         with gzip.open(path) as fin:
             data = pickle.load(fin)
         self.args = data["args"]
+        # self.output_dim = data["output_dim"] todo: add it ?
         self.ready()
         assign_ops = self.load_trained_vars(path)
         sess.run(tf.global_variables_initializer())
         print 'assigning trained values ...\n'
         for param_name, param_assign_op in assign_ops.iteritems():
+            print 'assigning values in ', param_name
             sess.run(param_assign_op)
 
     def num_parameters(self):

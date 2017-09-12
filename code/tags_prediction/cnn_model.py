@@ -40,6 +40,7 @@ class Model(object):
             self.bodies = tf.nn.embedding_lookup(self.embeddings, self.bodies_words_ids_placeholder)
 
             if self.weights is not None:
+                print 'weighting the embeddings...'
                 titles_weights = tf.nn.embedding_lookup(self.weights, self.titles_words_ids_placeholder)
                 titles_weights = tf.expand_dims(titles_weights, axis=2)
                 self.titles = self.titles * titles_weights
@@ -135,15 +136,11 @@ class Model(object):
 
                 with tf.name_scope('loss'):
 
-                    if self.args.loss_type == 'xentropy':
-                        self.loss = -tf.reduce_sum(
-                            (self.target * tf.log(self.output + 1e-9)) + (
-                                (1 - self.target) * tf.log(1 - self.output + 1e-9)),
-                            name='cross_entropy'
-                        )
-
-                    else:
-                        raise Exception('unimplemented')
+                    self.loss = -tf.reduce_sum(
+                        (self.target * tf.log(self.output + 1e-9)) + (
+                            (1 - self.target) * tf.log(1 - self.output + 1e-9)),
+                        name='cross_entropy'
+                    )
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -224,11 +221,9 @@ class Model(object):
             if self.args.save_dir != "":
                 print("Writing to {}\n".format(self.args.save_dir))
 
-            # Summaries for loss and cost
+            # Train Summaries
             loss_summary = tf.summary.scalar("loss", self.loss)
             cost_summary = tf.summary.scalar("cost", self.cost)
-
-            # Train Summaries
             train_summary_op = tf.summary.merge([loss_summary, cost_summary])
             train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
@@ -237,20 +232,23 @@ class Model(object):
                 # Dev Summaries
                 dev_mac_p = tf.placeholder(tf.float32)
                 dev_mic_p = tf.placeholder(tf.float32)
-                dev_mac_r = tf.placeholder(tf.float32)
-                dev_mic_r = tf.placeholder(tf.float32)
-                dev_mac_f1 = tf.placeholder(tf.float32)
-                dev_mic_f1 = tf.placeholder(tf.float32)
                 dev_mac_p_summary = tf.summary.scalar("dev_mac_p", dev_mac_p)
                 dev_mic_p_summary = tf.summary.scalar("dev_mic_p", dev_mic_p)
+
+                dev_mac_r = tf.placeholder(tf.float32)
+                dev_mic_r = tf.placeholder(tf.float32)
                 dev_mac_r_summary = tf.summary.scalar("dev_mac_r", dev_mac_r)
                 dev_mic_r_summary = tf.summary.scalar("dev_mic_r", dev_mic_r)
+
+                dev_mac_f1 = tf.placeholder(tf.float32)
+                dev_mic_f1 = tf.placeholder(tf.float32)
                 dev_mac_f1_summary = tf.summary.scalar("dev_mac_f1", dev_mac_f1)
                 dev_mic_f1_summary = tf.summary.scalar("dev_mic_f1", dev_mic_f1)
+
                 dev_summary_op = tf.summary.merge(
-                    [dev_mac_f1_summary, dev_mic_f1_summary,
-                     dev_mac_p_summary, dev_mic_p_summary,
-                     dev_mac_r_summary, dev_mic_r_summary]
+                    [dev_mac_p_summary, dev_mic_p_summary,
+                     dev_mac_r_summary, dev_mic_r_summary,
+                     dev_mac_f1_summary, dev_mic_f1_summary]
                 )
                 dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
                 dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
@@ -258,20 +256,23 @@ class Model(object):
                 # Test Summaries
                 test_mac_p = tf.placeholder(tf.float32)
                 test_mic_p = tf.placeholder(tf.float32)
-                test_mac_r = tf.placeholder(tf.float32)
-                test_mic_r = tf.placeholder(tf.float32)
-                test_mac_f1 = tf.placeholder(tf.float32)
-                test_mic_f1 = tf.placeholder(tf.float32)
                 test_mac_p_summary = tf.summary.scalar("test_mac_p", test_mac_p)
                 test_mic_p_summary = tf.summary.scalar("test_mic_p", test_mic_p)
+
+                test_mac_r = tf.placeholder(tf.float32)
+                test_mic_r = tf.placeholder(tf.float32)
                 test_mac_r_summary = tf.summary.scalar("test_mac_r", test_mac_r)
                 test_mic_r_summary = tf.summary.scalar("test_mic_r", test_mic_r)
+
+                test_mac_f1 = tf.placeholder(tf.float32)
+                test_mic_f1 = tf.placeholder(tf.float32)
                 test_mac_f1_summary = tf.summary.scalar("test_mac_f1", test_mac_f1)
                 test_mic_f1_summary = tf.summary.scalar("test_mic_f1", test_mic_f1)
+
                 test_summary_op = tf.summary.merge(
-                    [test_mac_f1_summary, test_mic_f1_summary,
-                     test_mac_p_summary, test_mic_p_summary,
-                     test_mac_r_summary, test_mic_r_summary]
+                    [test_mac_p_summary, test_mic_p_summary,
+                     test_mac_r_summary, test_mic_r_summary,
+                     test_mac_f1_summary, test_mic_f1_summary]
                 )
                 test_summary_dir = os.path.join(self.args.save_dir, "summaries", "test")
                 test_summary_writer = tf.summary.FileWriter(test_summary_dir, sess.graph)
@@ -309,7 +310,7 @@ class Model(object):
 
                     if i == N-1:  # EVAL
                         if dev:
-                            (dev_MAC_P, dev_MAC_P, dev_MAC_F1), (dev_MIC_P, dev_MIC_R, dev_MIC_F1) = \
+                            (dev_MAC_P, dev_MAC_R, dev_MAC_F1), (dev_MIC_P, dev_MIC_R, dev_MIC_F1) = \
                                 self.evaluate(dev, sess)
                             _dev_sum = sess.run(
                                 dev_summary_op,
@@ -320,7 +321,7 @@ class Model(object):
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
 
                         if test:
-                            (test_MAC_P, test_MAC_P, test_MAC_F1), (test_MIC_P, test_MIC_R, test_MIC_F1) = \
+                            (test_MAC_P, test_MAC_R, test_MAC_F1), (test_MIC_P, test_MIC_R, test_MIC_F1) = \
                                 self.evaluate(test, sess)
                             _test_sum = sess.run(
                                 test_summary_op,
