@@ -92,6 +92,8 @@ class Model(object):
                 self.h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
                 self.h_final = self.normalize_2d(self.h_final)
 
+                # todo: can add dropout before inputting to MLP. normalization can be removed. ?!
+
             with tf.name_scope("MLP"):
                 self.w_o = tf.Variable(
                     tf.random_normal([self.args.hidden_dim, self.output_dim], mean=0.0, stddev=0.05),
@@ -274,7 +276,7 @@ class Model(object):
                     os.makedirs(checkpoint_dir)
 
             unchanged = 0
-            max_epoch = 50
+            max_epoch = self.args.max_epoch
             for epoch in xrange(max_epoch):
                 unchanged += 1
                 if unchanged > 15:
