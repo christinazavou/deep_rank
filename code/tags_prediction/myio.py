@@ -5,13 +5,13 @@ import numpy as np
 import tensorflow as tf
 
 
-def read_corpus(path, with_tags=False):
+def read_corpus(path, with_tags=False, test=-1):
     empty_cnt = 0
     raw_corpus = {}
     fopen = gzip.open if path.endswith(".gz") else open
     with fopen(path) as fin:
         if with_tags:
-            for line in fin:
+            for test_id, line in enumerate(fin):
                 id, title, body, tags = line.split("\t")
                 if len(title) == 0:
                     print id
@@ -21,8 +21,10 @@ def read_corpus(path, with_tags=False):
                 body = body.strip().split()
                 tags = tags.strip().split(u', ')
                 raw_corpus[id] = (title, body, tags)
+                if test_id == test:
+                    break
         else:
-            for line in fin:
+            for test_id, line in enumerate(fin):
                 id, title, body = line.split("\t")
                 if len(title) == 0:
                     print id
@@ -31,6 +33,8 @@ def read_corpus(path, with_tags=False):
                 title = title.strip().split()
                 body = body.strip().split()
                 raw_corpus[id] = (title, body)
+                if test_id == test:
+                    break
     print("{} empty titles ignored.\n".format(empty_cnt))
 
     # print ' raw_corpus keys :\n', raw_corpus.keys()[0:3]

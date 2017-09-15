@@ -10,10 +10,18 @@ import os
 
 
 from main_model_nostate import Model as BasicModel
-NUM_FEATURES = 4
 
 
 class Model(BasicModel):
+
+    def __init__(self, args, embedding_layer, num_features, weights=None):
+        self.args = args
+        self.embedding_layer = embedding_layer
+        self.embeddings = embedding_layer.embeddings
+        self.padding_id = embedding_layer.vocab_map["<padding>"]
+        self.weights = weights
+        self.params = {}
+        self.num_features = num_features
 
     def _initialize_graph(self):
 
@@ -107,7 +115,7 @@ class Model(BasicModel):
             with tf.name_scope("input"):
                 # batch size * candidates * features
                 self.features_placeholder = tf.placeholder(
-                    tf.float32, [None, None, NUM_FEATURES], name='features'
+                    tf.float32, [None, None, self.num_features], name='features'
                 )
 
                 # if self.args.word_vec_feature:
@@ -122,13 +130,13 @@ class Model(BasicModel):
                 #     self.features = tf.concat([self.features_placeholder, ])
 
             with tf.name_scope("weights"):
-                self.W = tf.Variable(random_init([NUM_FEATURES, 1]), name="weight")
+                self.W = tf.Variable(random_init([self.num_features, 1]), name="weight")
                 self.b = tf.Variable(np.random.random(), name="bias")
 
             with tf.name_scope('outputs'):
                 # Construct a linear model
                 # one prediction for each sample in the batch and each candidate
-                predictions = tf.matmul(tf.reshape(self.features_placeholder, [-1, NUM_FEATURES]), self.W)
+                predictions = tf.matmul(tf.reshape(self.features_placeholder, [-1, self.num_features]), self.W)
 
             with tf.name_scope('linear-logits'):
                 # For testing:
@@ -212,17 +220,15 @@ class Model(BasicModel):
         return MAP, MRR, P1, P5, hinge_loss
 
     def _train_batch(self, titles, bodies, pairs, features, train_op, global_step, train_summary_op, train_summary_writer, sess):
-        _, _step, _loss, _cost, _summary = sess.run(
-            [train_op, global_step, self.loss, self.cost, train_summary_op],
+        _, _, _, _step, _loss, _cost, _summary = sess.run(
+            [train_op[0], train_op[1], train_op[2], global_step, self.loss, self.cost, train_summary_op],
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.pairs_ids_placeholder: pairs,
                 self.dropout_prob: np.float32(self.args.dropout),
                 self.features_placeholder: features
-            }
-        )
-
+            })
         train_summary_writer.add_summary(_summary, _step)
         return _step, _loss, _cost
 
@@ -238,9 +244,13 @@ class Model(BasicModel):
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
-            optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
-            grads_and_vars = optimizer.compute_gradients(self.cost)
-            train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+            # optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
+            # train_op = optimizer.minimize(self.cost, global_step=global_step)
+            dnn_optimizer = tf.train.AdamOptimizer(self.args.dnn_lr)
+            linear_optimizer = tf.train.AdagradOptimizer(self.args.linear_lr)
+            train_op_dnn = dnn_optimizer.minimize(self.cost, var_list=self.dnn_vars_to_train)
+            train_op_linear = linear_optimizer.minimize(self.cost, var_list=self.linear_vars_to_train)
+            gs_increment = tf.assign_add(global_step, 1, name='gs_increment')
 
             sess.run(tf.global_variables_initializer())
             if assign_ops:
@@ -291,7 +301,10 @@ class Model(BasicModel):
                 for i in xrange(N):
                     idts, idbs, idps, batch_features = train_batches[i]
                     cur_step, cur_loss, cur_cost = self._train_batch(
-                        idts, idbs, idps, batch_features, train_op, global_step, train_summary_op, train_summary_writer, sess
+                        idts, idbs, idps, batch_features,
+                        # train_op,
+                        [train_op_dnn, train_op_linear, gs_increment],
+                        global_step, train_summary_op, train_summary_writer, sess
                     )
 
                     train_loss += cur_loss
