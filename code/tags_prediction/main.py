@@ -114,7 +114,15 @@ def main():
 
     print 'total params: ', model.num_parameters()
 
-    model.train_model(train, dev=dev, test=test)
+    assert not (args.load_pre_trained_part != "" and args.load_trained_vars != "")
+    if args.load_trained_vars:
+        assign_ops = model.load_trained_vars(args.load_trained_vars)
+    elif args.load_pre_trained_part:
+        assign_ops = model.load_pre_trained_part(args.load_pre_trained_part)
+    else:
+        assign_ops = None
+
+    model.train_model(train, dev=dev, test=test, assign_ops=assign_ops)
 
 
 if __name__ == '__main__':
@@ -139,6 +147,9 @@ if __name__ == '__main__':
     argparser.add_argument("--average", type=int, default=0)
     argparser.add_argument("--depth", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")
+
+    argparser.add_argument("--load_trained_vars", type=str, default="")
+    argparser.add_argument("--load_pre_trained_part", type=str, default="")
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

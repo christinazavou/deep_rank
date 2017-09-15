@@ -364,6 +364,7 @@ class Model(object):
                         myio.say("\n{}\n".format(result_table))
 
     def save(self, sess, path, step):
+        # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again
         path = "{}_{}_{}".format(path, step, ".pkl.gz")
         print("Saving model checkpoint to {}\n".format(path))
         params_values = {}
@@ -380,6 +381,28 @@ class Model(object):
                 fout,
                 protocol=pickle.HIGHEST_PROTOCOL
             )
+
+    def load_pre_trained_part(self, path):
+        print("Loading model checkpoint from {}\n".format(path))
+        assert self.args is not None and self.params != {}
+        assign_ops = {}
+        with gzip.open(path) as fin:
+            data = pickle.load(fin)
+            assert self.args.hidden_dim == data["args"].hidden_dim
+            params_values = data['params_values']
+            graph = tf.get_default_graph()
+            for param_name, param_value in params_values.iteritems():
+                if param_name in self.params:
+                    print param_name, ' is in my dict'
+                    try:
+                        variable = graph.get_tensor_by_name(param_name)
+                        assign_op = tf.assign(variable, param_value)
+                        assign_ops[param_name] = assign_op
+                    except:
+                        raise Exception("{} not found in my graph".format(param_name))
+                else:
+                    print param_name, ' is not in my dict'
+        return assign_ops
 
     def load_trained_vars(self, path):
         print("Loading model checkpoint from {}\n".format(path))

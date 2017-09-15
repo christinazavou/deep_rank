@@ -1,12 +1,14 @@
 import argparse
-import sys
-from tags_prediction.myio import read_corpus
-from myio import create_embedding_layer, map_corpus
-import time
-from utils import load_embedding_iterator
 import os
-from widendeepio import read_eval_annotations, read_train_annotations, create_eval_batches, create_train_batches
-from main_model_widendeep import Model
+import sys
+import time
+
+from qa.deepnwide.main_model import Model
+from qa.deepnwide.myio import read_eval_annotations, read_train_annotations, create_eval_batches, \
+    create_train_batches
+from qa.myio import create_embedding_layer, map_corpus
+from tags_prediction.myio import read_corpus
+from utils import load_embedding_iterator
 
 
 def main():
@@ -38,7 +40,13 @@ def main():
     model = Model(args, embedding_layer, 42)
     model.ready()
 
-    assign_ops = model.load_trained_vars(args.load_pretrain) if args.load_pretrain else None
+    assert not (args.load_pre_trained_part != "" and args.load_trained_vars != "")
+    if args.load_trained_vars:
+        assign_ops = model.load_trained_vars(args.load_trained_vars)
+    elif args.load_pre_trained_part:
+        assign_ops = model.load_pre_trained_part(args.load_pre_trained_part)
+    else:
+        assign_ops = None
 
     model.train_model(
         train_batches,
@@ -72,7 +80,8 @@ if __name__ == "__main__":
     argparser.add_argument("--normalize", type=int, default=1)
     # argparser.add_argument("--reweight", type=int, default=1)
 
-    argparser.add_argument("--load_pretrain", type=str, default="")
+    argparser.add_argument("--load_trained_vars", type=str, default="")
+    argparser.add_argument("--load_pre_trained_part", type=str, default="")
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

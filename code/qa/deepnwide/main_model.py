@@ -2,14 +2,14 @@ import tensorflow as tf
 import numpy as np
 from nn import get_activation_by_name
 from prettytable import PrettyTable
-from myio import say
+from qa.myio import say
 from nn.initialization import random_init
-from evaluation import Evaluation
-import myio
+from qa.evaluation import Evaluation
+import qa.myio
 import os
 
 
-from main_model_nostate import Model as BasicModel
+from qa.main_model_nostate import Model as BasicModel
 
 
 class Model(BasicModel):
@@ -311,7 +311,7 @@ class Model(BasicModel):
                     train_cost += cur_cost
 
                     if i % 10 == 0:
-                        myio.say("\r{}/{}".format(i, N))
+                        qa.myio.say("\r{}/{}".format(i, N))
 
                     if i == N-1:  # EVAL
                         if dev:

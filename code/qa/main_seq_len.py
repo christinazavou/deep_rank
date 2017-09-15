@@ -337,17 +337,17 @@ class Model(object):
                     #     say("\n{}\n".format(result_table))
 
     def save(self, sess, path, step):
+        # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again
         path = "{}_{}_{}".format(path, step, ".pkl.gz")
         print("Saving model checkpoint to {}\n".format(path))
-        params = tf.trainable_variables()
-        params_dict = {}
-        for param in params:
-            params_dict[param.name] = sess.run(param)
+        params_values = {}
+        for param_name, param in self.params.iteritems():
+            params_values[param.name] = sess.run(param)
         # print 'params_dict\n', params_dict
         with gzip.open(path, "w") as fout:
             pickle.dump(
                 {
-                    "params_dict": params_dict,
+                    "params_values": params_values,
                     "args": self.args,
                     "step": step
                 },
@@ -355,18 +355,41 @@ class Model(object):
                 protocol=pickle.HIGHEST_PROTOCOL
             )
 
-    def load_trained_vars(self, path):
+    def load_pre_trained_part(self, path):
         print("Loading model checkpoint from {}\n".format(path))
-        assign_ops = []
+        assert self.args is not None and self.params != {}
+        assign_ops = {}
         with gzip.open(path) as fin:
             data = pickle.load(fin)
-            assert self.args == data['args'], 'some different args:\n{}'.format(self.args)
-            params_dict = data['params_dict']
+            assert self.args.hidden_dim == data["args"].hidden_dim
+            params_values = data['params_values']
             graph = tf.get_default_graph()
-            for param_name, param_value in params_dict.iteritems():
+            for param_name, param_value in params_values.iteritems():
+                if param_name in self.params:
+                    print param_name, ' is in my dict'
+                    try:
+                        variable = graph.get_tensor_by_name(param_name)
+                        assign_op = tf.assign(variable, param_value)
+                        assign_ops[param_name] = assign_op
+                    except:
+                        raise Exception("{} not found in my graph".format(param_name))
+                else:
+                    print param_name, ' is not in my dict'
+        return assign_ops
+
+    def load_trained_vars(self, path):
+        print("Loading model checkpoint from {}\n".format(path))
+        assert self.args is not None and self.params != {}
+        assign_ops = {}
+        with gzip.open(path) as fin:
+            data = pickle.load(fin)
+            assert self.args.hidden_dim == data["args"].hidden_dim
+            params_values = data['params_values']
+            graph = tf.get_default_graph()
+            for param_name, param_value in params_values.iteritems():
                 variable = graph.get_tensor_by_name(param_name)
                 assign_op = tf.assign(variable, param_value)
-                assign_ops.append(assign_op)
+                assign_ops[param_name] = assign_op
         return assign_ops
 
 

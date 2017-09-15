@@ -43,18 +43,15 @@ class QRAPI:
         self.model = model
 
         def score_func(titles, bodies, cur_sess):
-            _scores = cur_sess.run(
-                self.model.scores,
-                feed_dict={
-                    self.model.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
-                    self.model.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
-                    self.model.dropout_prob: 0.,
-
-                    # todo: ajust
-                    # self.model.init_state: np.zeros((self.model.args.depth, 2, titles.T.shape[0], self.model.args.hidden_dim))
-
-                }
-            )
+            feed_dict = {
+                self.model.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
+                self.model.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
+                self.model.dropout_prob: 0.,
+            }
+            if 'init_state' in self.model.__dict__:
+                print 'init_state is in'
+                feed_dict[self.model.init_state] = np.zeros((self.model.args.depth, 2, titles.T.shape[0], self.model.args.hidden_dim))
+            _scores = cur_sess.run(self.model.scores, feed_dict)
             return _scores
         self.score_func = score_func
         say("scoring function compiled\n")
