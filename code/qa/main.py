@@ -24,21 +24,20 @@ def main():
     if args.reweight:
         weights = myio.create_idf_weights(args.corpus, embedding_layer)
 
-    if args.layer == "lstm":
+    if args.layer.lower() == "lstm":
         from main_model import Model
-        # from main_model_nostate import Model
         # from main_model_1layer import Model
-    elif args.layer == "bilstm":
+    elif (args.layer.lower() == "bilstm") or (args.layer.lower() == "bi-lstm"):
         from main_model_bidirectional import Model
-    elif args.layer == "cnn":
+    elif args.layer.lower() == "cnn":
         from main_model_cnn import Model
 
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
-        dev = myio.create_eval_batches(ids_corpus, dev, padding_id, pad_left=not args.average)
+        dev = myio.create_eval_batches(ids_corpus, dev, padding_id, pad_left=False)
     if args.test:
         test = myio.read_annotations(args.test, K_neg=-1, prune_pos_cnt=-1)
-        test = myio.create_eval_batches(ids_corpus, test, padding_id, pad_left=not args.average)
+        test = myio.create_eval_batches(ids_corpus, test, padding_id, pad_left=False)
 
     model = Model(args, embedding_layer, weights=weights if args.reweight else None)
     model.ready()
@@ -57,7 +56,7 @@ def main():
         start_time = time.time()
         train = myio.read_annotations(args.train)
         train_batches = myio.create_batches(
-            ids_corpus, train, args.batch_size, padding_id, pad_left=not args.average
+            ids_corpus, train, args.batch_size, padding_id, pad_left=False
         )
         print("{} to create batches\n".format(time.time()-start_time))
         print("{} batches, {} tokens in total, {} triples in total\n".format(
@@ -98,6 +97,7 @@ if __name__ == "__main__":
     argparser.add_argument("--normalize", type=int, default=1)
     argparser.add_argument("--reweight", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")
+    argparser.add_argument("--concat", type=int, default=0)
 
     argparser.add_argument("--load_trained_vars", type=str, default="")
     argparser.add_argument("--load_pre_trained_part", type=str, default="")

@@ -83,31 +83,24 @@ class Model(object):
                             strides=[1, 1, 1, 1],  # how much the window shifts by in each of the dimensions.
                             padding="VALID",
                             name="conv-titles")
-                        # self.conv_t = conv_t
-                        #         # Given an input tensor of shape [batch, in_height, in_width, in_channels]
-                        #         # diladi [batch (num_of_sequences), num_of_words, embedded_size, 1]
-                        #         # and a filter / kernel tensor of shape [filter_height, filter_width, in_channels, out_channels]
-                        #         # diladi [filter_size, embedding_size, 1, num_to_replicate_filter]
-                        #         # output of conv is: (seq_len-fil_size+2*Pad)/Stride+1=Seq_len-fil_size+1
 
                         # Apply nonlinearity
                         h_t = tf.nn.relu(tf.nn.bias_add(conv_t, b), name="relu-titles")
                         # a special case of tf.add where bias is restricted to 1-D.
 
-                        # Max-pooling over the outputs
-                        # pooled_t = tf.nn.max_pool(
-                        #     h_t,
-                        #     ksize=[1, sequence_length - filter_size + 1, 1, 1],
-                        #     # size of the window for each dimension of the input tensor.
-                        #     strides=[1, 1, 1, 1],
-                        #     padding='VALID',
-                        #     name="pool-titles"
-                        # )
-                        pooled_t = tf.reduce_max(
-                            h_t,
-                            axis=1,
-                            keep_dims=True
-                        )
+                        if self.args.average:
+                            pooled_t = tf.reduce_mean(
+                                h_t,
+                                axis=1,
+                                keep_dims=True
+                            )
+                        else:
+                            pooled_t = tf.reduce_max(
+                                h_t,
+                                axis=1,
+                                keep_dims=True
+                            )
+
                         # self.pooled_t = pooled_t
                         pooled_outputs_t.append(pooled_t)
 
@@ -122,11 +115,19 @@ class Model(object):
 
                         h_b = tf.nn.relu(tf.nn.bias_add(conv_b, b), name="relu-bodies")
 
-                        pooled_b = tf.reduce_max(
-                            h_b,
-                            axis=1,
-                            keep_dims=True
-                        )
+                        if self.args.average:
+                            pooled_b = tf.reduce_mean(
+                                h_b,
+                                axis=1,
+                                keep_dims=True
+                            )
+                        else:
+                            pooled_b = tf.reduce_max(
+                                h_b,
+                                axis=1,
+                                keep_dims=True
+                            )
+
                         # self.pooled_b = pooled_b
                         pooled_outputs_b.append(pooled_b)
 
@@ -240,26 +241,8 @@ class Model(object):
                 self.dropout_prob: np.float32(self.args.dropout),
             }
         )
-        # _loss, _cost, tit, bod, w, conv_t, pooled_t, t_pool, t_state, h_final = sess.run(
-        #     [self.loss, self.cost,
-        #      self.titles, self.bodies, self.W,
-        #      self.conv_t, self.pooled_t, self.t_pool, self.t_state, self.h_final],
-        #     feed_dict={
-        #         self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
-        #         self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
-        #         self.pairs_ids_placeholder: pairs,
-        #         self.dropout_prob: np.float32(self.args.dropout),
-        #     }
-        # )
-        # print 'titles bodies ', tit.shape, bod.shape
-        # print 'loss cost ', _loss, _cost
-        # print 'w ', w.shape
-        # print 'conv_t pooled_t ', conv_t.shape, pooled_t.shape
-        # print 't_pool t_state ', t_pool.shape, t_state.shape
-        # print 'h_final ', h_final.shape
         train_summary_writer.add_summary(_summary, _step)
         return _step, _loss, _cost
-        # return 0, 0, 0
 
     def train_model(self, train_batches, dev=None, test=None, assign_ops=None):
         with tf.Session() as sess:
@@ -290,7 +273,6 @@ class Model(object):
             cost_summary = tf.summary.scalar("cost", self.cost)
 
             # Train Summaries
-            train_summary_op = tf.summary.merge([loss_summary, cost_summary])
             train_summary_op = tf.summary.merge([loss_summary, cost_summary])
             train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
@@ -329,10 +311,7 @@ class Model(object):
                     cur_step, cur_loss, cur_cost = self.train_batch(
                         idts, idbs, idps, train_op, global_step, train_summary_op, train_summary_writer, sess
                     )
-                    # cur_step, cur_loss, cur_cost = self.train_batch(
-                    #     idts, idbs, idps, None, None, None, None, sess
-                    # )
-                    print 'cost loss ', cur_cost, cur_loss
+
                     train_loss += cur_loss
                     train_cost += cur_cost
 

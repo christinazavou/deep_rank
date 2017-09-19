@@ -34,7 +34,8 @@ class Model(object):
 
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
 
-            self.init_state = tf.placeholder(tf.float32, [self.args.depth, 2, None, self.args.hidden_dim], name='init_state')
+        self.SLT = self._find_sequence_length(self.titles_words_ids_placeholder)
+        self.SLB = self._find_sequence_length(self.bodies_words_ids_placeholder)
 
         with tf.name_scope('embeddings'):
             self.titles = tf.nn.embedding_lookup(self.embeddings, self.titles_words_ids_placeholder)
@@ -53,11 +54,6 @@ class Model(object):
             self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
 
         with tf.name_scope('LSTM'):
-            state_per_layer_list = tf.unstack(self.init_state, axis=0)  # i.e. unstack for each layer
-            rnn_tuple_state = tuple(
-                [tf.nn.rnn_cell.LSTMStateTuple(state_per_layer_list[idx][0], state_per_layer_list[idx][1])  # i.e. cell_s, hidden_s
-                 for idx in range(self.args.depth)]
-            )
 
             def lstm_cell():
                 _cell = tf.nn.rnn_cell.LSTMCell(
@@ -71,7 +67,12 @@ class Model(object):
             )
 
         with tf.name_scope('titles_output'):
-            self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(cell, self.titles, initial_state=rnn_tuple_state)
+            self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(
+                cell,
+                self.titles,
+                dtype=tf.float32,
+                sequence_length=self.SLT
+            )
             # current_state = last state of every layer in the network as an LSTMStateTuple
 
             if self.args.normalize:
@@ -80,12 +81,19 @@ class Model(object):
             if self.args.average:
                 self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
             else:
-                self.t_state = self.t_states_series[:, -1, :]
-                # SAME AS self.t_current_state[-1][1]
-                # SAME AS self.t_current_state[0][1]
+                # self.t_state=self.t_states_series[:, -1, :]=self.t_current_state[-1][1]=self.t_current_state[0][1]
+                # in case sequence_length parameter is used in RNN, the last state is not self.t_states_series[:,-1,:]
+                # but is self.t_states_series[:, self.SLT[x], :] and it is stored correctly in
+                # self.t_current_state[0][1] so its better and safer to use this.
+                self.t_state = self.t_current_state[0][1]
 
         with tf.name_scope('bodies_output'):
-            self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(cell, self.bodies, initial_state=rnn_tuple_state)
+            self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
+                cell,
+                self.bodies,
+                dtype=tf.float32,
+                sequence_length=self.SLB
+            )
             # current_state = last state of every layer in the network as an LSTMStateTuple
 
             if self.args.normalize:
@@ -94,9 +102,11 @@ class Model(object):
             if self.args.average:
                 self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
             else:
-                self.b_state = self.b_states_series[:, -1, :]
-                # SAME AS self.b_current_state[-1][1]
-                # SAME AS self.b_current_state[0][1]
+                # self.b_state=self.b_states_series[:, -1, :]=self.b_current_state[-1][1]=self.b_current_state[0][1]
+                # in case sequence_length parameter is used in RNN, the last state is not self.b_states_series[:,-1,:]
+                # but is self.b_states_series[:, self.SLB[x], :] and it is stored correctly in
+                # self.b_current_state[0][1] so its better and safer to use this.
+                self.b_state = self.b_current_state[0][1]
 
         with tf.name_scope('outputs'):
             # batch * d
@@ -134,6 +144,12 @@ class Model(object):
                 self.l2_reg = l2_reg
 
             self.cost = self.loss + self.l2_reg
+
+    def _find_sequence_length(self, ids):
+        s = tf.not_equal(ids, self.padding_id)
+        s = tf.cast(s, tf.int32)
+        s = tf.reduce_sum(s, axis=1)
+        return s
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):
@@ -174,15 +190,12 @@ class Model(object):
         return loss
 
     def eval_batch(self, titles, bodies, sess):
-        _current_state = np.zeros(
-            (self.args.depth, 2, titles.T.shape[0], self.args.hidden_dim))  # CURRENT_STATE DEPENDS ON BATCH
         _scores = sess.run(
             self.scores,
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.dropout_prob: 0.,
-                self.init_state: _current_state
             }
         )
         return _scores
@@ -209,9 +222,6 @@ class Model(object):
         return MAP, MRR, P1, P5, hinge_loss
 
     def train_batch(self, titles, bodies, pairs, train_op, global_step, train_summary_op, train_summary_writer, sess):
-        _current_state = np.zeros(
-            (self.args.depth, 2, titles.T.shape[0], self.args.hidden_dim))  # CURRENT_STATE DEPENDS ON BATCH
-
         _, _step, _loss, _cost, _summary = sess.run(
             [train_op, global_step, self.loss, self.cost, train_summary_op],
             feed_dict={
@@ -219,10 +229,8 @@ class Model(object):
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.pairs_ids_placeholder: pairs,
                 self.dropout_prob: np.float32(self.args.dropout),
-                self.init_state: _current_state
             }
         )
-
         train_summary_writer.add_summary(_summary, _step)
         return _step, _loss, _cost
 

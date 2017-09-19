@@ -2,7 +2,7 @@ import tensorflow as tf
 from nn import get_activation_by_name
 
 
-from main_model_1layer import Model as BasicModel
+from main_model import Model as BasicModel
 
 
 class Model(BasicModel):
@@ -54,54 +54,70 @@ class Model(BasicModel):
                 # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
                 return _cell
 
-            forward_cell = lstm_cell(self.args.hidden_dim/2 if self.args.average == 0 else self.args.hidden_dim)
-            backward_cell = lstm_cell(self.args.hidden_dim/2 if self.args.average == 0 else self.args.hidden_dim)
+            forward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+            backward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
 
         with tf.name_scope('titles_output'):
-            self.t_outputs, self.t_state = tf.nn.bidirectional_dynamic_rnn(
+            t_outputs, t_state = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=forward_cell,
                 cell_bw=backward_cell,
                 inputs=self.titles,
                 dtype=tf.float32,
                 sequence_length=self.SLT
             )
-            # ACTUALLY RETURNS:
-            # A tuple (outputs, output_states)
-            # outputs: A tuple (output_fw, output_bw)
             # output_fw = a Tensor shaped: [batch_size, max_time, cell_fw.output_size]
             # output_bw = a Tensor shaped: [batch_size, max_time, cell_bw.output_size].
             # output_states: A tuple (output_state_fw, output_state_bw)
 
-            # forw_t_outputs, back_t_outputs = self.t_outputs
-            forw_t_state, back_t_state = self.t_state
+            forw_t_outputs, back_t_outputs = t_outputs
+            forw_t_state, back_t_state = t_state
 
-            if self.args.average == 0:
-                self.t_state_vec = tf.concat([forw_t_state[1], back_t_state[1]], axis=1)
+            if self.args.normalize:
+                forw_t_outputs = self.normalize_3d(forw_t_outputs)
+                back_t_outputs = self.normalize_3d(back_t_outputs)
+
+            if self.args.average:
+                forw_t_state = self.average_without_padding(forw_t_outputs, self.titles_words_ids_placeholder)
+                back_t_state = self.average_without_padding(back_t_outputs, self.titles_words_ids_placeholder)
             else:
-                self.t_state_vec = (forw_t_state[1] + back_t_state[1]) / 2.
+                forw_t_state = forw_t_state[1]  # (this is last output based on seq len)
+                back_t_state = back_t_state[1]  # (same BUT in backwards => first output!)
+
+            if self.args.concat:
+                self.t_state_vec = tf.concat([forw_t_state, back_t_state], axis=1)
+            else:
+                self.t_state_vec = (forw_t_state + back_t_state) / 2.
 
         with tf.name_scope('bodies_output'):
-            self.b_outputs, self.b_state = tf.nn.bidirectional_dynamic_rnn(
+            b_outputs, b_state = tf.nn.bidirectional_dynamic_rnn(
                 cell_fw=forward_cell,
                 cell_bw=backward_cell,
                 inputs=self.bodies,
                 dtype=tf.float32,
                 sequence_length=self.SLB
             )
-            # ACTUALLY RETURNS:
-            # A tuple (outputs, output_states)
-            # outputs: A tuple (output_fw, output_bw)
             # output_fw = a Tensor shaped: [batch_size, max_time, cell_fw.output_size]
             # output_bw = a Tensor shaped: [batch_size, max_time, cell_bw.output_size].
             # output_states: A tuple (output_state_fw, output_state_bw)
 
-            # forw_b_outputs, back_b_outputs = self.b_outputs
-            forw_b_state, back_b_state = self.b_state
+            forw_b_outputs, back_b_outputs = b_outputs
+            forw_b_state, back_b_state = b_state
 
-            if self.args.average == 0:
-                self.b_state_vec = tf.concat([forw_b_state[1], back_b_state[1]], axis=1)
+            if self.args.normalize:
+                forw_b_outputs = self.normalize_3d(forw_b_outputs)
+                back_b_outputs = self.normalize_3d(back_b_outputs)
+
+            if self.args.average:
+                forw_b_state = self.average_without_padding(forw_b_outputs, self.bodies_words_ids_placeholder)
+                back_b_state = self.average_without_padding(back_b_outputs, self.bodies_words_ids_placeholder)
             else:
-                self.b_state_vec = (forw_b_state[1] + back_b_state[1]) * 0.5
+                forw_b_state = forw_b_state[1]  # (this is last output based on seq len)
+                back_b_state = back_b_state[1]  # (same BUT in backwards => first output!)
+
+            if self.args.concat:
+                self.b_state_vec = tf.concat([forw_b_state, back_b_state], axis=1)
+            else:
+                self.b_state_vec = (forw_b_state + back_b_state) / 2.
 
         with tf.name_scope('outputs'):
             # batch * d
