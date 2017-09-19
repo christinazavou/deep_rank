@@ -85,8 +85,8 @@ class Model(object):
                             name="conv-titles")
 
                         # Apply nonlinearity
-                        h_t = tf.nn.relu(tf.nn.bias_add(conv_t, b), name="relu-titles")
-                        # a special case of tf.add where bias is restricted to 1-D.
+                        nl_fun = get_activation_by_name(self.args.activation)
+                        h_t = nl_fun(tf.nn.bias_add(conv_t, b), name="act-titles")
 
                         if self.args.average:
                             pooled_t = tf.reduce_mean(
@@ -113,7 +113,8 @@ class Model(object):
                             name="conv-bodies")
                         # self.conv_b = conv_b
 
-                        h_b = tf.nn.relu(tf.nn.bias_add(conv_b, b), name="relu-bodies")
+                        nl_fun = get_activation_by_name(self.args.activation)
+                        h_b = nl_fun(tf.nn.bias_add(conv_b, b), name="act-bodies")
 
                         if self.args.average:
                             pooled_b = tf.reduce_mean(
