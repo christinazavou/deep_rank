@@ -25,12 +25,14 @@ def main():
         weights = myio.create_idf_weights(args.corpus, embedding_layer)
 
     if args.layer.lower() == "lstm":
-        from main_model import Model
-        # from main_model_1layer import Model
-    elif (args.layer.lower() == "bilstm") or (args.layer.lower() == "bi-lstm"):
-        from main_model_bidirectional import Model
+        # from main_model import Model
+        from models import LstmQA as Model
+    elif args.layer.lower() == "bilstm":
+        # from main_model_bidirectional import Model
+        from models import BiLstmQA as Model
     elif args.layer.lower() == "cnn":
-        from main_model_cnn import Model
+        # from main_model_cnn import Model
+        from models import CnnQA as Model
 
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
