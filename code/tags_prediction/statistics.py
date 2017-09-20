@@ -84,7 +84,7 @@ if __name__ == '__main__':
 
     # VARIABLES
     DIR = '/home/christina/Documents/Thesis/data/askubuntu/additional/'
-    NUM = 2000
+    NUM = 3000
     # -----------------------------------------------------------------
 
     df = read_df(os.path.join(DIR, 'data_frame_corpus_str.csv'))
@@ -93,6 +93,21 @@ if __name__ == '__main__':
 
     tags_set = set(list(df)) - {'id', 'title', 'body', 'tags', 'type', 'body_truncated'}
     print len(tags_set), ' tags: ', tags_set
+
+    """--------------------------------- ABOVE 20 -------------------------------------------------------------------"""
+    questions_per_tag = {}
+    data_train = df[df['type'] == 'train']
+    data_eval = df[df['type'] != 'train']
+    for col in list(tags_set):
+        if sum(data_train[col].values) >= 20 and sum(data_eval[col].values) >= 10:
+            questions_per_tag[col] = (sum(data_train[col].values), sum(data_eval[col].values))
+    print questions_per_tag
+    with open(os.path.join(DIR, 'tags_stats', 'above20tags.txt'), 'w') as f:
+        for item in questions_per_tag.iteritems():
+            f.write('{} : {}\n'.format(item[0], item[1]))
+    pickle.dump(questions_per_tag, open(os.path.join(DIR, 'tags_files', 'above20tags.p'), 'wb'))
+    exit()
+    """--------------------------------- ABOVE 20 -------------------------------------------------------------------"""
 
     hist_num_of_tags(df,)
     tags_not_in_questions(df,)

@@ -74,6 +74,10 @@ def main():
     df = df.fillna(u'')
 
     label_tags = pickle.load(open(args.tags_file, 'rb'))
+    if isinstance(label_tags, dict):
+        print 'from dict labels to list.'
+        label_tags = label_tags.keys()
+    print '\nloaded {} tags'.format(len(label_tags))
 
     raw_corpus = myio.read_corpus(args.corpus, with_tags=True)
 
