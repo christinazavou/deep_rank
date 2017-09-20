@@ -25,13 +25,10 @@ def main():
         weights = myio.create_idf_weights(args.corpus, embedding_layer)
 
     if args.layer.lower() == "lstm":
-        # from main_model import Model
         from models import LstmQA as Model
     elif args.layer.lower() == "bilstm":
-        # from main_model_bidirectional import Model
         from models import BiLstmQA as Model
     elif args.layer.lower() == "cnn":
-        # from main_model_cnn import Model
         from models import CnnQA as Model
 
     if args.dev:
