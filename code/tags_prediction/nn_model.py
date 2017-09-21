@@ -9,7 +9,7 @@ from sklearn.metrics import hamming_loss
 from sklearn.model_selection import StratifiedShuffleSplit
 
 from qa import myio
-from utils.statistics import read_df
+from tags_prediction.statistics import read_df
 
 
 class Model(object):

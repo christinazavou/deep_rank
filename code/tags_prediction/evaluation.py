@@ -21,7 +21,7 @@ class Evaluation(object):
 
     def precision_recall_fscore(self, average='macro'):
         p, r, f, _ = precision_recall_fscore_support(self.targets, self.predictions, average=average)
-        return p, r, f
+        return round(p, 4), round(r, 4), round(f, 4)
 
     # def precision_recall(self):
     #     # true positives

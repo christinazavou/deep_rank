@@ -84,7 +84,7 @@ if __name__ == '__main__':
 
     # VARIABLES
     DIR = '/home/christina/Documents/Thesis/data/askubuntu/additional/'
-    NUM = 3000
+    NUM = 50
     # -----------------------------------------------------------------
 
     df = read_df(os.path.join(DIR, 'data_frame_corpus_str.csv'))
@@ -94,20 +94,28 @@ if __name__ == '__main__':
     tags_set = set(list(df)) - {'id', 'title', 'body', 'tags', 'type', 'body_truncated'}
     print len(tags_set), ' tags: ', tags_set
 
-    """--------------------------------- ABOVE 20 -------------------------------------------------------------------"""
-    questions_per_tag = {}
-    data_train = df[df['type'] == 'train']
-    data_eval = df[df['type'] != 'train']
-    for col in list(tags_set):
-        if sum(data_train[col].values) >= 20 and sum(data_eval[col].values) >= 10:
-            questions_per_tag[col] = (sum(data_train[col].values), sum(data_eval[col].values))
-    print questions_per_tag
-    with open(os.path.join(DIR, 'tags_stats', 'above20tags.txt'), 'w') as f:
-        for item in questions_per_tag.iteritems():
-            f.write('{} : {}\n'.format(item[0], item[1]))
-    pickle.dump(questions_per_tag, open(os.path.join(DIR, 'tags_files', 'above20tags.p'), 'wb'))
-    exit()
-    """--------------------------------- ABOVE 20 -------------------------------------------------------------------"""
+    # """--------------------------------- ABOVE 20 -------------------------------------------------------------------"""
+    # questions_per_tag = {}
+    # data_train = df[df['type'] == 'train']
+    # data_eval = df[df['type'] != 'train']
+    # for col in list(tags_set):
+    #     if sum(data_train[col].values) >= 20 and sum(data_eval[col].values) >= 10:
+    #         questions_per_tag[col] = (sum(data_train[col].values), sum(data_eval[col].values))
+    # print questions_per_tag
+    # with open(os.path.join(DIR, 'tags_stats', 'above20tags.txt'), 'w') as f:
+    #     for item in questions_per_tag.iteritems():
+    #         f.write('{} : {}\n'.format(item[0], item[1]))
+    # above20tags = [k for k, v in questions_per_tag.iteritems()]
+    # pickle.dump(above20tags, open(os.path.join(DIR, 'tags_files', 'above20tags.p'), 'wb'))
+    #
+    # for typename, group_df in df.groupby('type'):
+    #     no_labels_cases_if_above20_selected = np.array(group_df[above20tags].values)
+    #     no_labels_cases_if_above20_selected = np.sum(no_labels_cases_if_above20_selected, 1)
+    #     no_labels_cases_if_above20_selected = np.sum((no_labels_cases_if_above20_selected == 0).astype(np.int32))
+    #     print no_labels_cases_if_above20_selected, ' with no labels in ', typename
+    #
+    # exit()
+    # """--------------------------------- ABOVE 20 -------------------------------------------------------------------"""
 
     hist_num_of_tags(df,)
     tags_not_in_questions(df,)
