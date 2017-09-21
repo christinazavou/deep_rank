@@ -43,6 +43,7 @@ def create_embedding_layer(n_d, embs=None, unk="<unk>", padding="<padding>", fix
 
 
 def map_corpus(raw_corpus, embedding_layer, max_len=100):
+    print 'map corpus: for one question we have multiple sentences with words, totalling upt to 100 words...'
     ids_corpus = {}
     for id, pair in raw_corpus.iteritems():
 
@@ -66,6 +67,7 @@ def map_corpus(raw_corpus, embedding_layer, max_len=100):
 
 
 def stats(ids_corpus):
+    print 'printing statistics on the questions after being left with 100 words in total'
     sent_per_q = Counter()
     words_per_sent = Counter()
     for id, question_words in ids_corpus.iteritems():
@@ -88,8 +90,8 @@ def stats(ids_corpus):
     plt.xticks(indexes + width * 0.5, labels)
     plt.title('sentences per question')
     plt.show()
-    print 'sent per q ', sent_per_q
-    print 'words per sent ', words_per_sent
+    # print 'sent per q ', sent_per_q
+    # print 'words per sent ', words_per_sent
 
 
 def create_eval_batches(ids_corpus, data, padding_id, sent_seq_len=15, word_seq_len=50):
@@ -132,6 +134,7 @@ def main():
     s_time = time.time()
     raw_corpus = read_corpus(args.corpus)
     print 'took ', time.time()-s_time
+    print 'raw_corpus example: ', raw_corpus.keys()[0], raw_corpus.values()[0]
     s_time = time.time()
 
     embedding_layer = create_embedding_layer(
@@ -143,8 +146,9 @@ def main():
 
     ids_corpus = map_corpus(raw_corpus, embedding_layer, max_len=args.max_seq_len)
     print 'took ', time.time()-s_time
+    print 'ids_corpus example: ', ids_corpus.keys()[0], ids_corpus.values()[0]
 
-    # stats(ids_corpus)
+    stats(ids_corpus)
 
     print("vocab size={}, corpus size={}\n".format(
             embedding_layer.n_V,
@@ -160,7 +164,12 @@ def main():
         test = myio.read_annotations(args.test, K_neg=-1, prune_pos_cnt=-1)
         test = create_eval_batches(ids_corpus, test, padding_id)
 
-    print 'OK OS EDO :)'
+        for t in test:
+            print t
+            print t[0].shape, t[1].shape
+            break
+
+    # todo: add training data
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(sys.argv[0])

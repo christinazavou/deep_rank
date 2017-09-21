@@ -155,6 +155,7 @@ class ModelQA(object):
             if assign_ops:
                 print 'assigning trained values ...\n'
                 sess.run(assign_ops)
+                del assign_ops
 
             if self.args.save_dir != "":
                 print("Writing to {}\n".format(self.args.save_dir))
