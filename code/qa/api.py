@@ -24,14 +24,12 @@ class QRAPI:
                 len(raw_corpus)
             ))
 
-        if layer == 'lstm':
-            from main_model import Model
-            # from main_model_nostate import Model
-            # from main_model_1layer import Model
-        elif layer == 'bilstm':
-            from main_model_bidirectional import Model
-        elif layer == 'cnn':
-            from main_model_cnn import Model
+        if layer.lower() == "lstm":
+            from models import LstmQA as Model
+        elif layer.lower() == "bilstm":
+            from models import BiLstmQA as Model
+        elif layer.lower() == "cnn":
+            from models import CnnQA as Model
 
         # model = Model(args=None, embedding_layer=embedding_layer,
         #             weights=weights)
@@ -101,11 +99,12 @@ def create_eval_batches(ids_corpus, data, padding_id, pad_left):
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
+    # all arguments are MUST
     argparser.add_argument("--model_path", type=str)
-    argparser.add_argument("--corpus_path", type=str, default="")
-    argparser.add_argument("--emb_path", type=str, default="")
-    argparser.add_argument("--dev", type=str, default="")
-    argparser.add_argument("--results_file", type=str, default="")
+    argparser.add_argument("--corpus_path", type=str, default="")  # texts_raw_fixed file
+    argparser.add_argument("--emb_path", type=str, default="")  # embeddings file
+    argparser.add_argument("--dev", type=str, default="")  # either dev or text file
+    argparser.add_argument("--results_file", type=str, default="")  # to write in
     argparser.add_argument("--layer", type=str, default="lstm")
     args = argparser.parse_args()
     print '\n', args, '\n'

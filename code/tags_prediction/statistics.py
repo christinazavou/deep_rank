@@ -33,6 +33,7 @@ def hist_num_of_tags(data_frame, type_name=None):
 
     print 'num of questions with 0 tags ', num_of_tags.count(0)
     print 'avg, min, max number of tags per question ', sum(num_of_tags)/(len(data_frame)+0.), min(num_of_tags), max(num_of_tags)
+    print 'std : ', np.std(np.array(num_of_tags))
 
 
 def tags_not_in_questions(data_frame, type_name=None):
@@ -118,6 +119,7 @@ if __name__ == '__main__':
     # """--------------------------------- ABOVE 20 -------------------------------------------------------------------"""
 
     hist_num_of_tags(df,)
+    exit()
     tags_not_in_questions(df,)
 
     commonsname = os.path.join(DIR, 'top{}_common_tags.p'.format(NUM))

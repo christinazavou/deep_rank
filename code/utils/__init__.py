@@ -103,6 +103,17 @@ def questions_index(questions_list, as_tuple=False):
     return questions
 
 
+def questions_index_with_tags(questions_list_with_tags, as_tuple=False):
+    questions = {}
+    for i in range(len(questions_list_with_tags)):
+        q_id, q_title, q_body, q_tags = questions_list_with_tags[i]
+        if as_tuple:
+            questions[int(q_id)] = (q_title, q_body, q_tags)
+        else:
+            questions[int(q_id)] = ("%s %s" % (q_title, q_body), q_tags)
+    return questions
+
+
 def read_df(df_file, chunk_size=None, read_columns=None):
     if '.csv' in df_file:
         if chunk_size:
