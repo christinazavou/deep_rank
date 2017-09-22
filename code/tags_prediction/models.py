@@ -287,11 +287,21 @@ class ModelMultiTagsClassifier(object):
                             )
                             test_summary_writer.add_summary(_test_sum, cur_step)
 
-                        # if dev_MIC_P > best_dev_performance:
-                        if dev_MIC_F1 > best_dev_performance:
+                        if self.args.performance == "f1_micro" and dev_MIC_F1 > best_dev_performance:
                             unchanged = 0
-                            # best_dev_performance = dev_MIC_P
                             best_dev_performance = dev_MIC_F1
+                            result_table.add_row(
+                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
+                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
+                            )
+                            result_table2.add_row(
+                                [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
+                            )
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "p_micro" and dev_MIC_P > best_dev_performance:
+                            unchanged = 0
+                            best_dev_performance = dev_MIC_P
                             result_table.add_row(
                                 [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
                                  test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
