@@ -1,6 +1,13 @@
 import tensorflow as tf
-import tensorflow.contrib.layers as layers
-from tensorflow.contrib.rnn import LSTMCell, LSTMStateTuple, GRUCell
+from nn import get_activation_by_name
+from qa.evaluation import Evaluation
+import numpy as np
+import os
+import gzip
+import pickle
+from prettytable import PrettyTable
+from qa.myio import say
+from tensorflow.contrib.rnn import LSTMStateTuple
 
 
 def bidirectional_rnn(
@@ -45,59 +52,51 @@ def bidirectional_rnn(
 
 class HANClassifierModel(object):
 
-    def __init__(self, args, embedding_layer, word_cell, sent_cell,  word_hid_dim, sent_hid_dim, word_attention_size,
-                 sent_attention_size, word_sequence_length, sent_sequence_length, scope=None):
+    def __init__(self, args, embedding_layer, word_hid_dim, sent_hid_dim, word_attention_size,
+                 sent_attention_size, word_sequence_length, sent_sequence_length):
 
         self.args = args
         self.embeddings = embedding_layer.embeddings
         self.embedding_size = embedding_layer.n_d
+        self.padding_id = embedding_layer.vocab_map["<padding>"]
 
-        self.word_cell = word_cell
         self.word_attention_size = word_attention_size
         self.word_hid_dim = word_hid_dim
         self.word_sequence_length = word_sequence_length
 
-        self.sent_cell = sent_cell
         self.sent_attention_size = sent_attention_size
         self.sent_hid_dim = sent_hid_dim
         self.sent_sequence_length = sent_sequence_length
 
-        with tf.variable_scope(scope or 'tcm') as scope:
+        self.params = {}
 
+    def ready(self):
+        self._initialize_placeholders_graph()
+        self._initialize_encoder_graph()
+        self._initialize_output_graph()
+        for param in tf.trainable_variables():
+            self.params[param.name] = param
+
+    def _initialize_placeholders_graph(self):
+
+        with tf.name_scope('input'):
             # [document x sentence x word]
             self.inputs = tf.placeholder(shape=(None, None, None), dtype=tf.int32, name='inputs')
 
-            # [document x sentence]
-            self.word_lengths = tf.placeholder(shape=(None, None), dtype=tf.int32, name='word_lengths')  # UN-PADDED
+            self.pairs_ids_placeholder = tf.placeholder(tf.int32, [None, None], name='bodies_ids')  # LENGTH = 3 OR 22
 
-            # [document]
-            self.sent_lengths = tf.placeholder(shape=(None,), dtype=tf.int32, name='sentence_lengths')  # UN-PADDED
+            self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
 
-            # [document]
-            self.labels = tf.placeholder(shape=(None,), dtype=tf.int32, name='labels')
+    def _initialize_encoder_graph(self):
+        with tf.variable_scope('embeddings'):
 
-            self.dropout_keep_proba = tf.placeholder(tf.float32, name="dropout_keep_proba")
+            # [document x sentence], [document]
+            self.word_lengths, self.sent_lengths = self._find_sequence_lengths(self.inputs)
+            self.inputs_embedded = tf.nn.embedding_lookup(self.embeddings, self.inputs)
 
-            self._init_embedding(scope)
+            # self.inputs_embedded = tf.nn.dropout(self.inputs_embedded, 1.0 - self.dropout_prob)
 
-            self._init_body(scope)
-
-        with tf.variable_scope('train'):
-            self.cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=self.labels, logits=self.logits)
-
-            self.loss = tf.reduce_mean(self.cross_entropy)
-
-            self.accuracy = tf.reduce_mean(tf.cast(tf.nn.in_top_k(self.logits, self.labels, 1), tf.float32))
-
-            self.tvars = tf.trainable_variables()
-
-    def _init_embedding(self, scope):
-        with tf.variable_scope(scope):
-            with tf.variable_scope("embedding"):
-                self.inputs_embedded = tf.nn.embedding_lookup(self.embeddings, self.inputs)
-
-    def _init_body(self, scope):
-        with tf.variable_scope(scope):
+        with tf.variable_scope('HierarchicalAttention'):
 
             """ -------------------------------------------WORD LEVEL----------------------------------------------- """
 
@@ -109,22 +108,24 @@ class HANClassifierModel(object):
 
             word_level_lengths = tf.reshape(self.word_lengths, [-1])
 
+            def lstm_cell(state_size):
+                _cell = tf.nn.rnn_cell.LSTMCell(
+                    state_size, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
+                )
+                return _cell
+
+            word_cell = lstm_cell(self.word_hid_dim)
+
             with tf.variable_scope('word') as scope:
                 word_encoder_output, _ = bidirectional_rnn(
-                    self.word_cell,
-                    self.word_cell,
+                    word_cell,
+                    word_cell,
                     word_level_inputs,
                     word_level_lengths,
                     scope=scope
                 )
-                self.word_hid_dim = self.word_hid_dim * 2  # DUE TO BIDIRECTIONAL
 
-                # word_encoder_output, _ = tf.nn.dynamic_rnn(
-                #     self.word_cell,
-                #     word_level_inputs,
-                #     word_level_lengths,
-                #     dtype=tf.float32
-                # )
+                self.word_hid_dim = self.word_hid_dim * 2  # DUE TO BIDIRECTIONAL
 
                 self.word_encoder_output = word_encoder_output
 
@@ -152,10 +153,7 @@ class HANClassifierModel(object):
                     self.word_level_output = word_level_output
 
                 with tf.variable_scope('dropout'):
-                    word_level_output = layers.dropout(
-                        word_level_output,
-                        keep_prob=self.dropout_keep_proba,
-                    )
+                    word_level_output = tf.nn.dropout(word_level_output, 1.0 - self.dropout_prob)
 
             """ ---------------------------------------SENTENCE LEVEL----------------------------------------------- """
 
@@ -165,14 +163,17 @@ class HANClassifierModel(object):
             )
             self.sent_level_inputs = sent_level_inputs
 
+            sent_cell = lstm_cell(self.sent_hid_dim)
+
             with tf.variable_scope('sentence') as scope:
                 sent_encoder_output, _ = bidirectional_rnn(
-                    self.sent_cell,
-                    self.sent_cell,
+                    sent_cell,
+                    sent_cell,
                     sent_level_inputs,
                     self.sent_lengths,
                     scope=scope
                 )
+
                 self.sent_hid_dim = self.sent_hid_dim * 2  # DUE TO BIDIRECTIONAL
 
                 self.sent_encoder_output = sent_encoder_output
@@ -201,76 +202,301 @@ class HANClassifierModel(object):
                     self.sent_level_output = sent_level_output
 
                 with tf.variable_scope('dropout'):
-                    sent_level_output = layers.dropout(
-                        sent_level_output,
-                        keep_prob=self.dropout_keep_proba,
+                    sent_level_output = tf.nn.dropout(sent_level_output, 1.0 - self.dropout_prob)
+
+            with tf.name_scope('outputs'):
+                # batch * d
+                h_final = sent_level_output
+                assert len(h_final.get_shape()) == 2
+                self.h_final = self.normalize_2d(h_final)
+
+    def _initialize_output_graph(self):
+
+        with tf.name_scope('scores'):
+            # For testing:
+            #   first one in batch is query, the rest are candidate questions
+            self.scores = tf.reduce_sum(tf.multiply(self.h_final[0], self.h_final[1:]), axis=1)
+
+            # For training:
+            pairs_vecs = tf.nn.embedding_lookup(self.h_final, self.pairs_ids_placeholder, name='pairs_vecs')
+            # num query * n_d
+            query_vecs = pairs_vecs[:, 0, :]
+            # num query
+            pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
+            # num query * candidate size
+            neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
+            # num query
+            neg_scores = tf.reduce_max(neg_scores, axis=1)
+
+        with tf.name_scope('cost'):
+
+            with tf.name_scope('loss'):
+                diff = neg_scores - pos_scores + 1.0
+                loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
+                self.loss = loss
+
+            with tf.name_scope('regularization'):
+                l2_reg = 0.
+                for param in tf.trainable_variables():
+                    l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
+                self.l2_reg = l2_reg
+
+            self.cost = self.loss + self.l2_reg
+
+    @staticmethod
+    def normalize_2d(x, eps=1e-8):
+        # x is batch*hid_dim
+        # l2 is batch*1
+        l2 = tf.norm(x, ord=2, axis=1, keep_dims=True)
+        return x / (l2 + eps)
+
+    def _find_sequence_lengths(self, ids):
+        s = tf.not_equal(ids, self.padding_id)
+        s = tf.cast(s, tf.int32)
+        wl = tf.reduce_sum(s, axis=2)
+        s = tf.not_equal(wl, self.padding_id)
+        s = tf.cast(s, tf.int32)
+        sl = tf.reduce_sum(s, axis=1)
+        assert len(wl.get_shape()) == 2 and len(sl.get_shape()) == 1
+        return wl, sl
+
+    @staticmethod
+    def max_margin_loss(labels, scores):
+        pos_scores = [score for label, score in zip(labels, scores) if label == 1]
+        neg_scores = [score for label, score in zip(labels, scores) if label == 0]
+        if len(pos_scores) == 0 or len(neg_scores) == 0:
+            return None
+        pos_score = min(pos_scores)
+        neg_score = max(neg_scores)
+        diff = neg_score - pos_score + 1.0
+        if diff > 0:
+            loss = diff
+        else:
+            loss = 0
+        return loss
+
+    def eval_batch(self, questions, sess):
+        _scores = sess.run(
+            self.scores,
+            feed_dict={
+                self.inputs: questions,
+                self.dropout_prob: 0.,
+            }
+        )
+        return _scores
+
+    def evaluate(self, data, sess):
+        res = []
+        hinge_loss = 0.
+
+        for questions, id_labels in data:
+            cur_scores = self.eval_batch(questions, sess)
+            mml = self.max_margin_loss(id_labels, cur_scores)
+            if mml is not None:
+                hinge_loss = (hinge_loss + mml) / 2.
+            assert len(id_labels) == len(cur_scores)
+            ranks = (-cur_scores).argsort()
+            ranked_labels = id_labels[ranks]
+            res.append(ranked_labels)
+
+        e = Evaluation(res)
+        MAP = round(e.MAP(), 4)
+        MRR = round(e.MRR(), 4)
+        P1 = round(e.Precision(1), 4)
+        P5 = round(e.Precision(5), 4)
+        return MAP, MRR, P1, P5, hinge_loss
+
+    def train_batch(self, questions, pairs, train_op, global_step, train_summary_op, train_summary_writer, sess):
+        _, _step, _loss, _cost, _summary = sess.run(
+            [train_op, global_step, self.loss, self.cost, train_summary_op],
+            feed_dict={
+                self.inputs: questions,
+                self.pairs_ids_placeholder: pairs,
+                self.dropout_prob: np.float32(self.args.dropout),
+            }
+        )
+        train_summary_writer.add_summary(_summary, _step)
+        return _step, _loss, _cost
+
+    def train_model(self, train_batches, dev=None, test=None, assign_ops=None):
+        with tf.Session() as sess:
+
+            result_table = PrettyTable(
+                ["Epoch", "dev MAP", "dev MRR", "dev P@1", "dev P@5", "tst MAP", "tst MRR", "tst P@1", "tst P@5"]
+            )
+            dev_MAP = dev_MRR = dev_P1 = dev_P5 = 0
+            test_MAP = test_MRR = test_P1 = test_P5 = 0
+            best_dev = -1
+
+            # Define Training procedure
+            global_step = tf.Variable(0, name="global_step", trainable=False)
+            optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
+            grads_and_vars = optimizer.compute_gradients(self.cost)
+            train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+
+            sess.run(tf.global_variables_initializer())
+            if assign_ops:
+                print 'assigning trained values ...\n'
+                sess.run(assign_ops)
+                del assign_ops
+
+            if self.args.save_dir != "":
+                print("Writing to {}\n".format(self.args.save_dir))
+
+            # Summaries for loss and cost
+            loss_summary = tf.summary.scalar("loss", self.loss)
+            cost_summary = tf.summary.scalar("cost", self.cost)
+
+            # Train Summaries
+            train_summary_op = tf.summary.merge([loss_summary, cost_summary])
+            train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
+            train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
+
+            # Dev Summaries
+            dev_loss = tf.placeholder(tf.float32)
+            dev_map = tf.placeholder(tf.float32)
+            dev_mrr = tf.placeholder(tf.float32)
+            dev_loss_summary = tf.summary.scalar("dev_loss", dev_loss)
+            dev_map_summary = tf.summary.scalar("dev_map", dev_map)
+            dev_mrr_summary = tf.summary.scalar("dev_mrr", dev_mrr)
+            dev_summary_op = tf.summary.merge([dev_loss_summary, dev_map_summary, dev_mrr_summary])
+            dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
+            dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
+
+            if self.args.save_dir != "":
+                checkpoint_dir = os.path.join(self.args.save_dir, "checkpoints")
+                checkpoint_prefix = os.path.join(checkpoint_dir, "model")
+                if not os.path.exists(checkpoint_dir):
+                    os.makedirs(checkpoint_dir)
+
+            unchanged = 0
+            max_epoch = self.args.max_epoch
+            for epoch in xrange(max_epoch):
+                unchanged += 1
+                if unchanged > 15:
+                    break
+
+                N = len(train_batches)
+
+                train_loss = 0.0
+                train_cost = 0.0
+
+                for i in xrange(N):
+                    questions, idps = train_batches[i]
+                    cur_step, cur_loss, cur_cost = self.train_batch(
+                        questions, idps, train_op, global_step, train_summary_op, train_summary_writer, sess
                     )
 
-            with tf.variable_scope('classifier'):
-                self.logits = layers.fully_connected(
-                    sent_level_output, self.classes, activation_fn=None
-                )
-                self.prediction = tf.argmax(self.logits, axis=-1)
+                    train_loss += cur_loss
+                    train_cost += cur_cost
 
+                    if i % 10 == 0:
+                        say("\r{}/{}".format(i, N))
 
-if __name__ == '__main__':
+                    if i == N-1:  # EVAL
+                        if dev:
+                            dev_MAP, dev_MRR, dev_P1, dev_P5, dev_hinge_loss = self.evaluate(dev, sess)
+                            _dev_sum = sess.run(
+                                dev_summary_op,
+                                {dev_loss: dev_hinge_loss, dev_map: dev_MAP, dev_mrr: dev_MRR}
+                            )
+                            dev_summary_writer.add_summary(_dev_sum, cur_step)
 
-    with tf.Session() as session:
+                        if test:
+                            test_MAP, test_MRR, test_P1, test_P5, test_hinge_loss = self.evaluate(test, sess)
 
-        model = HANClassifierModel(
-            vocab_size=20,
-            embedding_size=4,
-            classes=2,
+                        if dev_MRR > best_dev:
+                            unchanged = 0
+                            best_dev = dev_MRR
+                            result_table.add_row(
+                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
+                            )
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
 
-            # word_cell=GRUCell(6),
-            word_cell=LSTMCell(6),
-            # sent_cell=GRUCell(8),
-            sent_cell=LSTMCell(8),
+                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tMRR={:.2f},{:.2f}\n".format(
+                            epoch,
+                            train_cost / (i+1),  # i.e. divided by N training batches
+                            train_loss / (i+1),  # i.e. divided by N training batches
+                            dev_MRR,
+                            best_dev
+                        ))
+                        say("\n{}\n".format(result_table))
 
-            word_attention_size=7,
-            sent_attention_size=9,
+    def save(self, sess, path, step):
+        # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again
+        path = "{}_{}_{}".format(path, step, ".pkl.gz")
+        print("Saving model checkpoint to {}\n".format(path))
+        params_values = {}
+        for param_name, param in self.params.iteritems():
+            params_values[param.name] = sess.run(param)
+        # print 'params_dict\n', params_dict
+        with gzip.open(path, "w") as fout:
+            pickle.dump(
+                {
+                    "params_values": params_values,
+                    "args": self.args,
+                    "step": step
+                },
+                fout,
+                protocol=pickle.HIGHEST_PROTOCOL
+            )
 
-            word_hid_dim=6,
-            sent_hid_dim=8,
-            word_sequence_length=4,
-            sent_sequence_length=3,
-        )
+    def load_pre_trained_part(self, path):
+        print("Loading model checkpoint from {}\n".format(path))
+        assert self.args is not None and self.params != {}
+        assign_ops = {}
+        with gzip.open(path) as fin:
+            data = pickle.load(fin)
+            assert self.args.hidden_dim == data["args"].hidden_dim
+            params_values = data['params_values']
+            graph = tf.get_default_graph()
+            for param_name, param_value in params_values.iteritems():
+                if param_name in self.params:
+                    print param_name, ' is in my dict'
+                    try:
+                        variable = graph.get_tensor_by_name(param_name)
+                        assign_op = tf.assign(variable, param_value)
+                        assign_ops[param_name] = assign_op
+                    except:
+                        raise Exception("{} not found in my graph".format(param_name))
+                else:
+                    print param_name, ' is not in my dict'
+        return assign_ops
 
-        # Define Training procedure
-        global_step = tf.Variable(0, name="global_step", trainable=False)
-        optimizer = tf.train.AdamOptimizer(1e-4)
-        grads_and_vars = optimizer.compute_gradients(model.loss)
-        train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+    def load_trained_vars(self, path):
+        print("Loading model checkpoint from {}\n".format(path))
+        assert self.args is not None and self.params != {}
+        assign_ops = {}
+        with gzip.open(path) as fin:
+            data = pickle.load(fin)
+            assert self.args.hidden_dim == data["args"].hidden_dim
+            params_values = data['params_values']
+            graph = tf.get_default_graph()
+            for param_name, param_value in params_values.iteritems():
+                variable = graph.get_tensor_by_name(param_name)
+                assign_op = tf.assign(variable, param_value)
+                assign_ops[param_name] = assign_op
+        return assign_ops
 
-        session.run(tf.global_variables_initializer())
+    def load_n_set_model(self, path, sess):
+        with gzip.open(path) as fin:
+            data = pickle.load(fin)
+        self.args = data["args"]
+        self.ready()
+        assign_ops = self.load_trained_vars(path)
+        sess.run(tf.global_variables_initializer())
+        print 'assigning trained values ...\n'
+        for param_name, param_assign_op in assign_ops.iteritems():
+            sess.run(param_assign_op)
 
-        fd = {
-            model.dropout_keep_proba: 0.5,
-            model.inputs:
-                [
-                    [
-                        [5, 4, 1, 0],
-                        [3, 3, 6, 7],
-                        [6, 7, 0, 0]
-                    ],
-                    [
-                        [2, 2, 1, 0],
-                        [3, 3, 6, 7],
-                        [0, 0, 0, 0]
-                    ]
-                ],
-            model.word_lengths:
-                [
-                    [3, 4, 2],
-                    [3, 4, 0],
-                ],
-            model.sent_lengths: [3, 2],
-            model.labels: [0, 1],
-        }
-
-        logits, pred = session.run(
-            [model.logits, model.prediction],
-            fd
-        )
-        print('logits: ', logits, ' pred: ', pred)
-        session.run(train_op, fd)
+    def num_parameters(self):
+        total_parameters = 0
+        for param_name, param in self.params.iteritems():
+            # shape is an array of tf.Dimension
+            shape = param.get_shape()
+            variable_parameters = 1
+            for dim in shape:
+                variable_parameters *= dim.value
+            total_parameters += variable_parameters
+        return total_parameters

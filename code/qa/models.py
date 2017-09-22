@@ -208,7 +208,7 @@ class ModelQA(object):
                     train_cost += cur_cost
 
                     if i % 10 == 0:
-                        myio.say("\r{}/{}".format(i, N))
+                        say("\r{}/{}".format(i, N))
 
                     if i == N-1:  # EVAL
                         if dev:

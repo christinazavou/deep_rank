@@ -100,9 +100,9 @@ def create_eval_batches(ids_corpus, data, padding_id, pad_left):
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
     # all arguments are MUST
-    argparser.add_argument("--model_path", type=str)
-    argparser.add_argument("--corpus_path", type=str, default="")  # texts_raw_fixed file
-    argparser.add_argument("--emb_path", type=str, default="")  # embeddings file
+    argparser.add_argument("--model", type=str)
+    argparser.add_argument("--corpus", type=str, default="")  # texts_raw_fixed file
+    argparser.add_argument("--embeddings", type=str, default="")  # embeddings file
     argparser.add_argument("--dev", type=str, default="")  # either dev or text file
     argparser.add_argument("--results_file", type=str, default="")  # to write in
     argparser.add_argument("--layer", type=str, default="lstm")
@@ -111,9 +111,9 @@ if __name__ == '__main__':
 
     with tf.Session() as sess:
 
-        myqrapi = QRAPI(args.model_path, args.corpus_path, args.emb_path, sess, args.layer)
+        myqrapi = QRAPI(args.model, args.corpus, args.embeddings, sess, args.layer)
 
-        raw_corpus = myio.read_corpus(args.corpus_path)
+        raw_corpus = myio.read_corpus(args.corpus)
         embedding_layer = myqrapi.model.embedding_layer
         ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, max_len=100)
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)

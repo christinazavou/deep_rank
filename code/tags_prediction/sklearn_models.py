@@ -115,9 +115,9 @@ def evaluate(test_x, test_y, labels, model):
     """------------------------------------------remove ill evaluation-------------------------------------------"""
     predictions = predictions[:, eval_labels]
     """------------------------------------------remove ill evaluation-------------------------------------------"""
-    precision, recall, f1, support = precision_recall_fscore_support(test_y, predictions)
-    results = pd.DataFrame({'tag/label': labels, 'precision': precision, 'recall': recall, 'f1': f1, 'support': support})
-    print results.head(len(labels))
+    # precision, recall, f1, support = precision_recall_fscore_support(test_y, predictions)
+    # results = pd.DataFrame({'tag/label': labels, 'precision': precision, 'recall': recall, 'f1': f1, 'support': support})
+    # print results.head(len(labels))
     print 'MACRO PRECISION RECALL F1: ', precision_recall_fscore_support(test_y, predictions, average='macro')
     print 'MICRO PRECISION RECALL F1: ', precision_recall_fscore_support(test_y, predictions, average='micro')
 

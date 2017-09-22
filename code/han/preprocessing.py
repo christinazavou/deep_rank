@@ -9,6 +9,8 @@ from collections import Counter
 import matplotlib.pyplot as plt
 import time
 import numpy as np
+import random
+import os
 
 
 def read_corpus(path):
@@ -130,10 +132,67 @@ def create_one_batch(questions, padding_id, sent_seq_len=15, word_seq_len=50):
     return new_questions
 
 
+def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, sent_seq_len=15, word_seq_len=50):
+    # PAD RIGHT
+
+    if perm is None:
+        perm = range(len(data))
+        random.shuffle(perm)
+
+    N = len(data)
+
+    cnt = 0
+    pid2id = {}
+    questions = []
+    triples = []
+    batches = []
+
+    for u in xrange(N):
+        i = perm[u]
+        pid, qids, qlabels = data[i]
+        if pid not in ids_corpus:
+            continue
+        cnt += 1
+        for id in [pid] + qids:
+            if id not in pid2id:
+                if id not in ids_corpus:
+                    continue
+                pid2id[id] = len(questions)
+                doc = ids_corpus[id]
+                questions.append(doc)
+        pid = pid2id[pid]
+        pos = [pid2id[q] for q, l in zip(qids, qlabels) if l == 1 and q in pid2id]
+        neg = [pid2id[q] for q, l in zip(qids, qlabels) if l == 0 and q in pid2id]
+        triples += [[pid, x]+neg for x in pos]
+
+        if cnt == batch_size or u == N-1:
+            questions = create_one_batch(questions, padding_id, sent_seq_len=15, word_seq_len=50)
+            triples = create_hinge_batch(triples)
+            batches.append((questions, triples))
+
+            questions = []
+            triples = []
+            pid2id = {}
+            cnt = 0
+
+    return batches
+
+
+def create_hinge_batch(triples):
+    max_len = max(len(x) for x in triples)
+    triples = np.vstack(
+        [np.pad(x, (0, max_len-len(x)), 'edge') for x in triples]
+    ).astype('int32')
+    return triples
+
+
 def main():
+
+    print 'use export LC_ALL=C'
+
     s_time = time.time()
     raw_corpus = read_corpus(args.corpus)
-    print 'took ', time.time()-s_time
+    print 'took ', (time.time()-s_time)//60, ' minutes'
     print 'raw_corpus example: ', raw_corpus.keys()[0], raw_corpus.values()[0]
     s_time = time.time()
 
@@ -148,7 +207,7 @@ def main():
     print 'took ', time.time()-s_time
     print 'ids_corpus example: ', ids_corpus.keys()[0], ids_corpus.values()[0]
 
-    stats(ids_corpus)
+    # stats(ids_corpus)
 
     print("vocab size={}, corpus size={}\n".format(
             embedding_layer.n_V,
@@ -158,18 +217,30 @@ def main():
 
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
-        dev = create_eval_batches(ids_corpus, dev, padding_id)
+        dev = create_eval_batches(ids_corpus, dev, padding_id, args.s_seq_len, args.w_seq_len)
 
     if args.test:
         test = myio.read_annotations(args.test, K_neg=-1, prune_pos_cnt=-1)
-        test = create_eval_batches(ids_corpus, test, padding_id)
+        test = create_eval_batches(ids_corpus, test, padding_id, args.s_seq_len, args.w_seq_len)
 
         for t in test:
-            print t
             print t[0].shape, t[1].shape
             break
 
-    # todo: add training data
+    if args.train:
+        train = myio.read_annotations(args.train)
+        train = create_batches(ids_corpus, train, args.batch_size, padding_id, None, args.s_seq_len, args.w_seq_len)
+        for t in train:
+            print t[0].shape, t[1].shape
+            break
+
+    from hanqa import HANClassifierModel
+    model = HANClassifierModel(
+        args, embedding_layer, args.word_d, args.sent_d, args.word_att, args.sent_att, args.w_seq_len, args.s_seq_len
+    )
+    model.ready()
+    model.train_model(train, dev=dev if args.dev else None, test=test if args.test else None,)
+
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(sys.argv[0])
@@ -180,8 +251,35 @@ if __name__ == "__main__":
 
     argparser.add_argument("--embeddings", type=str, default="")
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
-    argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)
+    argparser.add_argument("--cut_off", type=int, default=1)
+    argparser.add_argument("--w_seq_len", type=int, default=50)
+    argparser.add_argument("--s_seq_len", type=int, default=15)
+    argparser.add_argument("--batch_size", type=int, default=40)
+    argparser.add_argument("--concat", type=int, default=0)
+    argparser.add_argument("--word_d", type=int, default=200)
+    argparser.add_argument("--sent_d", type=int, default=200)
+    argparser.add_argument("--word_att", type=int, default=100)
+    argparser.add_argument("--sent_att", type=int, default=100)
+    argparser.add_argument("--dropout", type=float, default=0.0)
+    argparser.add_argument("--learning_rate", type=float, default=0.001)
+    argparser.add_argument("--l2_reg", type=float, default=1e-5)
+    argparser.add_argument("--activation", "-act", type=str, default="tanh")
+    argparser.add_argument("--max_epoch", type=int, default=50)
+
+    argparser.add_argument("--average", type=int, default=0)
+    argparser.add_argument("--normalize", type=int, default=1)
+    argparser.add_argument("--reweight", type=int, default=1)
+    argparser.add_argument("--layer", type=str, default="lstm")
+
+    argparser.add_argument("--load_trained_vars", type=str, default="")
+    argparser.add_argument("--load_pre_trained_part", type=str, default="")
+
+    timestamp = str(int(time.time()))
+    this_dir = os.path.dirname(os.path.realpath(__file__))
+    out_dir = os.path.join(this_dir, "runs", timestamp)
+
+    argparser.add_argument("--save_dir", type=str, default=out_dir)
 
     args = argparser.parse_args()
     print args
