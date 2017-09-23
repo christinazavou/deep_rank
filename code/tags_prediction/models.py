@@ -787,3 +787,108 @@ class CnnMultiTagsClassifire(ModelMultiTagsClassifier):
                 self.h_final = self.normalize_2d(h_final)
 
                 # todo: can add dropout before inputting to MLP. normalization can be removed. ?!
+
+
+class GruMultiTagsClassifier(ModelMultiTagsClassifier):
+
+    def __init__(self, args, embedding_layer, output_dim, weights=None):
+        self.args = args
+        self.embedding_layer = embedding_layer
+        self.embeddings = embedding_layer.embeddings
+        self.padding_id = embedding_layer.vocab_map["<padding>"]
+        self.weights = weights
+        self.output_dim = output_dim
+        self.params = {}
+
+    def _initialize_encoder_graph(self):
+
+        self.SLT = self._find_sequence_length(self.titles_words_ids_placeholder)
+        self.SLB = self._find_sequence_length(self.bodies_words_ids_placeholder)
+
+        with tf.name_scope('embeddings'):
+            self.titles = tf.nn.embedding_lookup(self.embeddings, self.titles_words_ids_placeholder)
+            self.bodies = tf.nn.embedding_lookup(self.embeddings, self.bodies_words_ids_placeholder)
+
+            if self.weights is not None:
+                titles_weights = tf.nn.embedding_lookup(self.weights, self.titles_words_ids_placeholder)
+                titles_weights = tf.expand_dims(titles_weights, axis=2)
+                self.titles = self.titles * titles_weights
+
+                bodies_weights = tf.nn.embedding_lookup(self.weights, self.bodies_words_ids_placeholder)
+                bodies_weights = tf.expand_dims(bodies_weights, axis=2)
+                self.bodies = self.bodies * bodies_weights
+
+            self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
+            self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
+
+        with tf.name_scope('LSTM'):
+
+            def gru_cell():
+                _cell = tf.nn.rnn_cell.GRUCell(
+                    self.args.hidden_dim, activation=get_activation_by_name(self.args.activation)
+                )
+                # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
+                return _cell
+
+            cell = tf.nn.rnn_cell.MultiRNNCell(
+                [gru_cell() for _ in range(self.args.depth)]
+            )
+
+        with tf.name_scope('titles_output'):
+            self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(
+                cell,
+                self.titles,
+                dtype=tf.float32,
+                sequence_length=self.SLT
+            )
+            # current_state = last state of every layer in the network as an LSTMStateTuple
+
+            if self.args.normalize:
+                self.t_states_series = self.normalize_3d(self.t_states_series)
+
+            if self.args.average:
+                self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
+            else:
+                self.t_state = self.t_current_state[0]
+
+        with tf.name_scope('bodies_output'):
+            self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
+                cell,
+                self.bodies,
+                dtype=tf.float32,
+                sequence_length=self.SLB
+            )
+            # current_state = last state of every layer in the network as an LSTMStateTuple
+
+            if self.args.normalize:
+                self.b_states_series = self.normalize_3d(self.b_states_series)
+
+            if self.args.average:
+                self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
+            else:
+                self.b_state = self.b_current_state[0]
+
+        with tf.name_scope('outputs'):
+
+            with tf.name_scope('encodings'):
+                # batch * d
+                h_final = (self.t_state + self.b_state) * 0.5
+                h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
+                self.h_final = self.normalize_2d(h_final)
+
+                # todo: can add dropout before inputting to MLP. normalization can be removed. ?!
+
+    def _find_sequence_length(self, ids):
+        s = tf.not_equal(ids, self.padding_id)
+        s = tf.cast(s, tf.int32)
+        s = tf.reduce_sum(s, axis=1)
+        return s
+
+    def average_without_padding(self, x, ids, eps=1e-8):
+        # len*batch*1
+        mask = tf.not_equal(ids, self.padding_id)
+        mask = tf.expand_dims(mask, 2)
+        mask = tf.cast(mask, tf.float32)
+        # batch*d
+        s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
+        return s

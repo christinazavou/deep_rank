@@ -30,6 +30,8 @@ def main():
         from models import BiLstmQA as Model
     elif args.layer.lower() == "cnn":
         from models import CnnQA as Model
+    elif args.layer.lower() == "gru":
+        from models import GruQA as Model
 
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)

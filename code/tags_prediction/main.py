@@ -95,12 +95,14 @@ def main():
     if args.reweight:
         weights = myio.create_idf_weights(args.corpus, embedding_layer, with_tags=True)
 
-    if args.layer == "lstm":
+    if args.layer.lower() == "lstm":
         from models import LstmMultiTagsClassifier as Model
-    elif args.layer == "bilstm":
+    elif args.layer.lower() == "bilstm":
         from models import BiLstmMultiTagsClassifier as Model
-    elif args.layer == "cnn":
+    elif args.layer.lower() == "cnn":
         from models import CnnMultiTagsClassifire as Model
+    elif args.layer.lower() == "gru":
+        from models import GruMultiTagsClassifier as Model
 
     dev = myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id, pad_left=not args.average)
     test = myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id, pad_left=not args.average)
