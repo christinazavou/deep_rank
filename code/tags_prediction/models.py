@@ -159,7 +159,7 @@ class ModelMultiTagsClassifier(object):
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
-            optimizer = tf.train.AdamOptimizer(0.001)
+            optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
             grads_and_vars = optimizer.compute_gradients(self.cost)
             train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
