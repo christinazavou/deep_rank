@@ -204,6 +204,7 @@ class ModelQATP(object):
             test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1 = 0, 0, 0, 0, 0, 0
 
             best_dev_performance = -1
+            worse_dev_loss = 1000000
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -316,20 +317,7 @@ class ModelQATP(object):
                                 (test_MIC_P, test_MIC_R, test_MIC_F1)
                             ) = self.evaluate(test, sess)
 
-                        if self.args.performance == "f1_micro" and dev_MIC_F1 > best_dev_performance:
-                            unchanged = 0
-                            best_dev_performance = dev_MIC_F1
-                            result_table_qa.add_row(
-                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
-                            )
-                            result_table_tp.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-
-                            if self.args.save_dir != "":
-                                self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "mrr" and dev_MRR > best_dev_performance:
+                        if self.args.performance == "dev_mrr" and dev_MRR > best_dev_performance:
                             unchanged = 0
                             best_dev_performance = dev_MRR
                             result_table_qa.add_row(
@@ -339,17 +327,29 @@ class ModelQATP(object):
                                 [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
                                  test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
                             )
-
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "dev_loss" and dev_hinge_loss < worse_dev_loss:
+                            unchanged = 0
+                            worse_dev_loss = dev_hinge_loss
+                            result_table_qa.add_row(
+                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
+                            )
+                            result_table_tp.add_row(
+                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
+                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
+                            )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
-                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss_qa={:.3f}\tloss_tp={:.3f}\tMRR={:.2f},{:.2f}\n".format(
+                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss_qa={:.3f}\tloss_tp={:.3f}\tMRR={:.2f},{:.2f}\tDevLoss={:.3f}\n".format(
                             epoch,
                             train_cost / (i+1),  # i.e. divided by N training batches
                             train_loss_qa / (i+1),  # i.e. divided by N training batches
                             train_loss_tp / (i+1),  # i.e. divided by N training batches
                             dev_MRR,
-                            best_dev_performance
+                            best_dev_performance,
+                            dev_hinge_loss
                         ))
                         say("\n{}\n".format(result_table_qa))
                         say("\n{}\n".format(result_table_tp))
