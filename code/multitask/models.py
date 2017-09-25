@@ -533,6 +533,241 @@ class LstmQATP(ModelQATP):
         return s
 
 
+class BiLstmQA(ModelQATP):
+
+    def __init__(self, args, embedding_layer, output_dim, weights=None):
+        self.args = args
+        self.embedding_layer = embedding_layer
+        self.embeddings = embedding_layer.embeddings
+        self.padding_id = embedding_layer.vocab_map["<padding>"]
+        self.weights = weights
+        self.output_dim = output_dim
+        self.params = {}
+
+    def _initialize_encoder_graph(self):
+
+        self.SLT = self._find_sequence_length(self.titles_words_ids_placeholder)
+        self.SLB = self._find_sequence_length(self.bodies_words_ids_placeholder)
+
+        with tf.name_scope('embeddings'):
+            self.titles = tf.nn.embedding_lookup(self.embeddings, self.titles_words_ids_placeholder)
+            self.bodies = tf.nn.embedding_lookup(self.embeddings, self.bodies_words_ids_placeholder)
+
+            if self.weights is not None:
+                titles_weights = tf.nn.embedding_lookup(self.weights, self.titles_words_ids_placeholder)
+                titles_weights = tf.expand_dims(titles_weights, axis=2)
+                self.titles = self.titles * titles_weights
+
+                bodies_weights = tf.nn.embedding_lookup(self.weights, self.bodies_words_ids_placeholder)
+                bodies_weights = tf.expand_dims(bodies_weights, axis=2)
+                self.bodies = self.bodies * bodies_weights
+
+            self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
+            self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
+
+        with tf.name_scope('LSTM'):
+
+            def lstm_cell(state_size):
+                _cell = tf.nn.rnn_cell.LSTMCell(
+                    state_size, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
+                )
+                # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
+                return _cell
+
+            forward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+            backward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+
+        with tf.name_scope('titles_output'):
+            t_outputs, t_state = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=forward_cell,
+                cell_bw=backward_cell,
+                inputs=self.titles,
+                dtype=tf.float32,
+                sequence_length=self.SLT
+            )
+
+            forw_t_outputs, back_t_outputs = t_outputs
+            forw_t_state, back_t_state = t_state
+
+            if self.args.normalize:
+                forw_t_outputs = self.normalize_3d(forw_t_outputs)
+                back_t_outputs = self.normalize_3d(back_t_outputs)
+
+            if self.args.average:
+                forw_t_state = self.average_without_padding(forw_t_outputs, self.titles_words_ids_placeholder)
+                back_t_state = self.average_without_padding(back_t_outputs, self.titles_words_ids_placeholder)
+            else:
+                forw_t_state = forw_t_state[1]  # (this is last output based on seq len)
+                back_t_state = back_t_state[1]  # (same BUT in backwards => first output!)
+
+            if self.args.concat:
+                self.t_state_vec = tf.concat([forw_t_state, back_t_state], axis=1)
+            else:
+                self.t_state_vec = (forw_t_state + back_t_state) / 2.
+
+        with tf.name_scope('bodies_output'):
+            b_outputs, b_state = tf.nn.bidirectional_dynamic_rnn(
+                cell_fw=forward_cell,
+                cell_bw=backward_cell,
+                inputs=self.bodies,
+                dtype=tf.float32,
+                sequence_length=self.SLB
+            )
+
+            forw_b_outputs, back_b_outputs = b_outputs
+            forw_b_state, back_b_state = b_state
+
+            if self.args.normalize:
+                forw_b_outputs = self.normalize_3d(forw_b_outputs)
+                back_b_outputs = self.normalize_3d(back_b_outputs)
+
+            if self.args.average:
+                forw_b_state = self.average_without_padding(forw_b_outputs, self.bodies_words_ids_placeholder)
+                back_b_state = self.average_without_padding(back_b_outputs, self.bodies_words_ids_placeholder)
+            else:
+                forw_b_state = forw_b_state[1]  # (this is last output based on seq len)
+                back_b_state = back_b_state[1]  # (same BUT in backwards => first output!)
+
+            if self.args.concat:
+                self.b_state_vec = tf.concat([forw_b_state, back_b_state], axis=1)
+            else:
+                self.b_state_vec = (forw_b_state + back_b_state) / 2.
+
+        with tf.name_scope('outputs'):
+            with tf.name_scope('encodings'):
+                # batch * d
+                h_final = (self.t_state_vec + self.b_state_vec) * 0.5
+                h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
+                self.h_final = self.normalize_2d(h_final)
+
+    def _find_sequence_length(self, ids):
+        s = tf.not_equal(ids, self.padding_id)
+        s = tf.cast(s, tf.int32)
+        s = tf.reduce_sum(s, axis=1)
+        return s
+
+    def average_without_padding(self, x, ids, eps=1e-8):
+        # len*batch*1
+        mask = tf.not_equal(ids, self.padding_id)
+        mask = tf.expand_dims(mask, 2)
+        mask = tf.cast(mask, tf.float32)
+        # batch*d
+        s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
+        return s
+
+
+class CnnQA(ModelQATP):
+
+    def __init__(self, args, embedding_layer, output_dim, weights=None):
+        self.args = args
+        self.embedding_layer = embedding_layer
+        self.embeddings = embedding_layer.embeddings
+        self.padding_id = embedding_layer.vocab_map["<padding>"]
+        self.weights = weights
+        self.output_dim = output_dim
+        self.params = {}
+
+    def _initialize_encoder_graph(self):
+
+        with tf.name_scope('embeddings'):
+            self.titles = tf.nn.embedding_lookup(self.embeddings, self.titles_words_ids_placeholder)
+            self.bodies = tf.nn.embedding_lookup(self.embeddings, self.bodies_words_ids_placeholder)
+
+            if self.weights is not None:
+                titles_weights = tf.nn.embedding_lookup(self.weights, self.titles_words_ids_placeholder)
+                titles_weights = tf.expand_dims(titles_weights, axis=2)
+                self.titles = self.titles * titles_weights
+
+                bodies_weights = tf.nn.embedding_lookup(self.weights, self.bodies_words_ids_placeholder)
+                bodies_weights = tf.expand_dims(bodies_weights, axis=2)
+                self.bodies = self.bodies * bodies_weights
+
+            self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
+            self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
+
+        with tf.name_scope('CNN'):
+            print 'ignoring depth at the moment !!'
+            self.embedded_titles_expanded = tf.expand_dims(self.titles, -1)
+            self.embedded_bodies_expanded = tf.expand_dims(self.bodies, -1)
+
+            pooled_outputs_t = []
+            pooled_outputs_b = []
+            filter_sizes = [3]
+            for i, filter_size in enumerate(filter_sizes):
+                with tf.name_scope("conv-maxpool-%s" % filter_size):
+                    filter_shape = [filter_size, self.embedding_layer.n_d, 1, self.args.hidden_dim]
+                    print 'assuming num filters = hidden dim. IS IT CORRECT? '
+
+                    W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="conv-W")
+                    b = tf.Variable(tf.constant(0.1, shape=[self.args.hidden_dim]), name="conv-b")
+
+                    with tf.name_scope('titles_output'):
+                        conv_t = tf.nn.conv2d(
+                            self.embedded_titles_expanded,
+                            W,
+                            strides=[1, 1, 1, 1],  # how much the window shifts by in each of the dimensions.
+                            padding="VALID",
+                            name="conv-titles")
+
+                        nl_fun = get_activation_by_name(self.args.activation)
+                        h_t = nl_fun(tf.nn.bias_add(conv_t, b), name="act-titles")
+
+                        if self.args.average:
+                            pooled_t = tf.reduce_mean(
+                                h_t,
+                                axis=1,
+                                keep_dims=True
+                            )
+                        else:
+                            pooled_t = tf.reduce_max(
+                                h_t,
+                                axis=1,
+                                keep_dims=True
+                            )
+
+                        pooled_outputs_t.append(pooled_t)
+
+                    with tf.name_scope('bodies_output'):
+                        conv_b = tf.nn.conv2d(
+                            self.embedded_bodies_expanded,
+                            W,
+                            strides=[1, 1, 1, 1],
+                            padding="VALID",
+                            name="conv-bodies")
+
+                        nl_fun = get_activation_by_name(self.args.activation)
+                        h_b = nl_fun(tf.nn.bias_add(conv_b, b), name="act-bodies")
+
+                        if self.args.average:
+                            pooled_b = tf.reduce_mean(
+                                h_b,
+                                axis=1,
+                                keep_dims=True
+                            )
+                        else:
+                            pooled_b = tf.reduce_max(
+                                h_b,
+                                axis=1,
+                                keep_dims=True
+                            )
+
+                        pooled_outputs_b.append(pooled_b)
+
+            num_filters_total = self.args.hidden_dim * len(filter_sizes)
+            self.t_pool = tf.concat(pooled_outputs_t, 3)
+            self.t_state = tf.reshape(self.t_pool, [-1, num_filters_total])
+
+            self.b_pool = tf.concat(pooled_outputs_b, 3)
+            self.b_state = tf.reshape(self.b_pool, [-1, num_filters_total])
+
+        with tf.name_scope('outputs'):
+            with tf.name_scope('encodings'):
+                # batch * d
+                h_final = (self.t_state + self.b_state) * 0.5
+                h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
+                self.h_final = self.normalize_2d(h_final)
+
+
 class GruQA(ModelQATP):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
