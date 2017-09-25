@@ -30,6 +30,8 @@ class QRAPI:
             from models import BiLstmQA as Model
         elif layer.lower() == "cnn":
             from models import CnnQA as Model
+        elif layer.lower() == "gru":
+            from models import GruQA as Model
 
         # model = Model(args=None, embedding_layer=embedding_layer,
         #             weights=weights)
