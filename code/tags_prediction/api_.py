@@ -13,12 +13,14 @@ class QRAPI:
 
     def __init__(self, model_path, emb_layer, session, output_dim, layer='lstm'):
 
-        if layer == 'lstm':
-            from model import Model
-        elif layer == 'bilstm':
-            from bilstm_model import Model
-        elif layer == 'cnn':
-            from cnn_model import Model
+        if layer.lower() == 'lstm':
+            from models import LstmMultiTagsClassifier as Model
+        elif layer.lower() == 'bilstm':
+            from models import BiLstmMultiTagsClassifier as Model
+        elif layer.lower() == 'cnn':
+            from models import CnnMultiTagsClassifier as Model
+        elif layer.lower() == "gru":
+            from models import GruMultiTagsClassifier as Model
 
         # model = Model(args=None, embedding_layer=embedding_layer, output_dim=output_dim, weights=weights)
         model = Model(args=None, embedding_layer=emb_layer, output_dim=output_dim)

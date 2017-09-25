@@ -659,7 +659,7 @@ class BiLstmMultiTagsClassifier(ModelMultiTagsClassifier):
         return s
 
 
-class CnnMultiTagsClassifire(ModelMultiTagsClassifier):
+class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args

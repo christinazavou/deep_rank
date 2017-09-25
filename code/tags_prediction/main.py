@@ -100,7 +100,7 @@ def main():
     elif args.layer.lower() == "bilstm":
         from models import BiLstmMultiTagsClassifier as Model
     elif args.layer.lower() == "cnn":
-        from models import CnnMultiTagsClassifire as Model
+        from models import CnnMultiTagsClassifier as Model
     elif args.layer.lower() == "gru":
         from models import GruMultiTagsClassifier as Model
 
