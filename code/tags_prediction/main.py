@@ -86,7 +86,7 @@ def main():
         embs=load_embedding_iterator(args.embeddings) if args.embeddings else None
     )
 
-    ids_corpus = myio.map_corpus2(raw_corpus, embedding_layer, label_tags, max_len=args.max_seq_len)
+    ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, label_tags, max_len=args.max_seq_len)
 
     print("vocab size={}, corpus size={}\n".format(embedding_layer.n_V, len(raw_corpus)))
 
