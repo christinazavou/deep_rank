@@ -166,7 +166,7 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, sent_seq
         triples += [[pid, x]+neg for x in pos]
 
         if cnt == batch_size or u == N-1:
-            questions = create_one_batch(questions, padding_id, sent_seq_len=15, word_seq_len=50)
+            questions = create_one_batch(questions, padding_id, sent_seq_len, word_seq_len)
             triples = create_hinge_batch(triples)
             batches.append((questions, triples))
 
@@ -197,7 +197,7 @@ def main():
     s_time = time.time()
 
     embedding_layer = create_embedding_layer(
-        n_d=args.hidden_dim,
+        n_d=10,
         embs=load_embedding_iterator(args.embeddings) if args.embeddings else None
     )
     print 'took ', time.time()-s_time
@@ -250,7 +250,6 @@ if __name__ == "__main__":
     argparser.add_argument("--dev", type=str, default="")
 
     argparser.add_argument("--embeddings", type=str, default="")
-    argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--max_seq_len", type=int, default=100)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--w_seq_len", type=int, default=50)
@@ -267,9 +266,9 @@ if __name__ == "__main__":
     argparser.add_argument("--activation", "-act", type=str, default="tanh")
     argparser.add_argument("--max_epoch", type=int, default=50)
 
-    argparser.add_argument("--average", type=int, default=0)
-    argparser.add_argument("--normalize", type=int, default=1)
-    argparser.add_argument("--reweight", type=int, default=1)
+    # argparser.add_argument("--average", type=int, default=0)
+    # argparser.add_argument("--normalize", type=int, default=1)
+    # argparser.add_argument("--reweight", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")
 
     argparser.add_argument("--load_trained_vars", type=str, default="")

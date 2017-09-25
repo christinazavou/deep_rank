@@ -114,7 +114,16 @@ class HANClassifierModel(object):
                 )
                 return _cell
 
-            word_cell = lstm_cell(self.word_hid_dim)
+            def gru_cell(state_size):
+                _cell = tf.nn.rnn_cell.GRUCell(
+                    state_size, activation=get_activation_by_name(self.args.activation)
+                )
+                return _cell
+
+            if self.args.layer.lower() == "lstm":
+                word_cell = lstm_cell(self.word_hid_dim)
+            else:
+                word_cell = gru_cell(self.word_hid_dim)
 
             with tf.variable_scope('word') as scope:
                 word_encoder_output, _ = bidirectional_rnn(
@@ -163,7 +172,10 @@ class HANClassifierModel(object):
             )
             self.sent_level_inputs = sent_level_inputs
 
-            sent_cell = lstm_cell(self.sent_hid_dim)
+            if self.args.layer.lower() == "lstm":
+                sent_cell = lstm_cell(self.sent_hid_dim)
+            else:
+                sent_cell = gru_cell(self.sent_hid_dim)
 
             with tf.variable_scope('sentence') as scope:
                 sent_encoder_output, _ = bidirectional_rnn(
@@ -448,7 +460,8 @@ class HANClassifierModel(object):
         assign_ops = {}
         with gzip.open(path) as fin:
             data = pickle.load(fin)
-            assert self.args.hidden_dim == data["args"].hidden_dim
+            assert self.args.sent_hid_dim == data["args"].sent_hid_dim
+            assert self.args.word_hid_dim == data["args"].word_hid_dim
             params_values = data['params_values']
             graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
@@ -470,7 +483,8 @@ class HANClassifierModel(object):
         assign_ops = {}
         with gzip.open(path) as fin:
             data = pickle.load(fin)
-            assert self.args.hidden_dim == data["args"].hidden_dim
+            assert self.args.sent_hid_dim == data["args"].sent_hid_dim
+            assert self.args.word_hid_dim == data["args"].word_hid_dim
             params_values = data['params_values']
             graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
