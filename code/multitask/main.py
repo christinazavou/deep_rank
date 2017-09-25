@@ -57,7 +57,14 @@ def main():
 
         if args.layer.lower() == "lstm":
             from models import LstmQATP as Model
-        model = Model(args, embedding_layer, len(label_tags), weights=weights if weights else None)
+        elif args.layer.lower() == "bilstm":
+            from models import BiLstmQATP as Model
+        elif args.layer.lower() == "cnn":
+            from models import CnnQATP as Model
+        elif args.layer.lower() == "gru":
+            from models import GruQATP as Model
+
+        model = Model(args, embedding_layer, len(label_tags), weights=weights if args.reweight else None)
         model.ready()
         print 'total params: ', model.num_parameters()
 

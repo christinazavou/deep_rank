@@ -392,6 +392,7 @@ class ModelQATP(object):
                         raise Exception("{} not found in my graph".format(param_name))
                 else:
                     print param_name, ' is not in my dict'
+        print '\n'
         return assign_ops
 
     def load_trained_vars(self, path):
@@ -533,7 +534,7 @@ class LstmQATP(ModelQATP):
         return s
 
 
-class BiLstmQA(ModelQATP):
+class BiLstmQATP(ModelQATP):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args
@@ -656,7 +657,7 @@ class BiLstmQA(ModelQATP):
         return s
 
 
-class CnnQA(ModelQATP):
+class CnnQATP(ModelQATP):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args
@@ -768,7 +769,7 @@ class CnnQA(ModelQATP):
                 self.h_final = self.normalize_2d(h_final)
 
 
-class GruQA(ModelQATP):
+class GruQATP(ModelQATP):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args
