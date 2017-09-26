@@ -78,7 +78,7 @@ class ModelQATP(object):
                 for param in tf.trainable_variables():
                     l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
                 self.l2_reg = l2_reg
-            self.cost = self.loss_qa + self.loss_tp + self.l2_reg
+            self.cost = self.args.qa_weight*self.loss_qa + self.args.tp_weight*self.loss_tp + self.l2_reg
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):

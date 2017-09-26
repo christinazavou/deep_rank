@@ -114,6 +114,8 @@ if __name__ == "__main__":
 
     argparser.add_argument("--threshold", type=float, default=0.5)
     argparser.add_argument("--performance", type=str, default="dev_mrr")
+    argparser.add_argument("--qa_weight", type=float, default=0.5)
+    argparser.add_argument("--tp_weight", type=float, default=0.5)
 
     argparser.add_argument("--load_trained_vars", type=str, default="")
     argparser.add_argument("--load_pre_trained_part", type=str, default="")
