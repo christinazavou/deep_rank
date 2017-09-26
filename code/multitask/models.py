@@ -122,7 +122,7 @@ class ModelQRTP(object):
 
     def evaluate(self, data, sess):
         res = []
-        hinge_loss = 0.
+        qr_loss = 0.
 
         outputs, predictions, targets = [], [], []
 
@@ -135,7 +135,7 @@ class ModelQRTP(object):
 
             mml = self.max_margin_loss(id_labels, cur_scores)
             if mml is not None:
-                hinge_loss = (hinge_loss + mml) / 2.
+                qr_loss = (qr_loss + mml) / 2.
             assert len(id_labels) == len(cur_scores)
             ranks = (-cur_scores).argsort()
             ranked_labels = id_labels[ranks]
@@ -150,6 +150,9 @@ class ModelQRTP(object):
         outputs = np.vstack(outputs)
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
+
+        tp_loss = -np.sum((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
+
         ev = TPEvaluation(outputs, predictions, targets)
         results = [round(ev.lr_ap_score(), 4), round(ev.lr_loss(), 4), round(ev.cov_error(), 4)]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
@@ -170,7 +173,7 @@ class ModelQRTP(object):
         ev = TPEvaluation(outputs, predictions, targets)
         results += [ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')]
 
-        return MAP, MRR, P1, P5, hinge_loss, tuple(results)
+        return MAP, MRR, P1, P5, qr_loss, tp_loss, tuple(results)
 
     def train_batch(self, batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
         titles, bodies, pairs, tags = batch
@@ -230,14 +233,17 @@ class ModelQRTP(object):
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
             # DEV for QR
-            dev_loss = tf.placeholder(tf.float32)
+            dev_loss_qr = tf.placeholder(tf.float32)
             dev_map = tf.placeholder(tf.float32)
             dev_mrr = tf.placeholder(tf.float32)
-            dev_loss_summary = tf.summary.scalar("dev_loss", dev_loss)
+            dev_loss_qr_summary = tf.summary.scalar("dev_loss_qr", dev_loss_qr)
             dev_map_summary = tf.summary.scalar("dev_map", dev_map)
             dev_mrr_summary = tf.summary.scalar("dev_mrr", dev_mrr)
 
             # DEV for TP
+            dev_loss_tp = tf.placeholder(tf.float32)
+            dev_loss_tp_summary = tf.summary.scalar("dev_loss_tp", dev_loss_tp)
+
             dev_mac_p = tf.placeholder(tf.float32)
             dev_mic_p = tf.placeholder(tf.float32)
             dev_mac_p_summary = tf.summary.scalar("dev_mac_p", dev_mac_p)
@@ -254,7 +260,8 @@ class ModelQRTP(object):
             dev_mic_f1_summary = tf.summary.scalar("dev_mic_f1", dev_mic_f1)
 
             dev_summary_op = tf.summary.merge(
-                [dev_loss_summary, dev_map_summary, dev_mrr_summary,
+                [dev_loss_qr_summary, dev_map_summary, dev_mrr_summary,
+                 dev_loss_tp_summary,
                  dev_mac_p_summary, dev_mic_p_summary,
                  dev_mac_r_summary, dev_mic_r_summary,
                  dev_mac_f1_summary, dev_mic_f1_summary]
@@ -295,7 +302,7 @@ class ModelQRTP(object):
 
                     if i == N-1:  # EVAL
                         if dev:
-                            dev_MAP, dev_MRR, dev_P1, dev_P5, dev_hinge_loss, (
+                            dev_MAP, dev_MRR, dev_P1, dev_P5, dev_qr_loss, dev_tp_loss, (
                                 dev_LRAP, dev_LRL, dev_CE,
                                 (dev_MAC_P, dev_MAC_R, dev_MAC_F1),
                                 (dev_MIC_P, dev_MIC_R, dev_MIC_F1)
@@ -303,7 +310,8 @@ class ModelQRTP(object):
 
                             _dev_sum = sess.run(
                                 dev_summary_op,
-                                {dev_loss: dev_hinge_loss, dev_map: dev_MAP, dev_mrr: dev_MRR,
+                                {dev_loss_qr: dev_qr_loss, dev_map: dev_MAP, dev_mrr: dev_MRR,
+                                 dev_loss_tp: dev_tp_loss,
                                  dev_mac_f1: dev_MAC_F1, dev_mic_f1: dev_MIC_F1,
                                  dev_mac_p: dev_MAC_P, dev_mic_p: dev_MIC_P,
                                  dev_mac_r: dev_MAC_R, dev_mic_r: dev_MIC_R},
@@ -311,7 +319,7 @@ class ModelQRTP(object):
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
 
                         if test:
-                            test_MAP, test_MRR, test_P1, test_P5, test_hinge_loss, (
+                            test_MAP, test_MRR, test_P1, test_P5, test_qr_loss, test_tp_loss, (
                                 test_LRAP, test_LRL, test_CE,
                                 (test_MAC_P, test_MAC_R, test_MAC_F1),
                                 (test_MIC_P, test_MIC_R, test_MIC_F1)
@@ -329,9 +337,9 @@ class ModelQRTP(object):
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "dev_loss" and dev_hinge_loss < worse_dev_loss:
+                        elif self.args.performance == "dev_qr_loss" and dev_qr_loss < worse_dev_loss:
                             unchanged = 0
-                            worse_dev_loss = dev_hinge_loss
+                            worse_dev_loss = dev_qr_loss
                             result_table_qr.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
@@ -341,9 +349,9 @@ class ModelQRTP(object):
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "p_macro" and dev_mac_p > best_dev_performance:
+                        elif self.args.performance == "p_macro" and dev_MAC_P > best_dev_performance:
                             unchanged = 0
-                            best_dev_performance = dev_mac_p
+                            best_dev_performance = dev_MAC_P
                             result_table_qr.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
@@ -355,15 +363,16 @@ class ModelQRTP(object):
                                 self.save(sess, checkpoint_prefix, cur_step)
 
                         say(
-                            "\r\n\nEpoch {}\tcost={:.3f}\tloss_qr={:.3f}\tloss_tp={:.3f}\t"
-                            "devMRR={:.3f}\tDevLoss={:.3f}\tdevMacroP={:.3f}\n".format(
+                            "\r\n\nEpoch {}:\tcost={:.3f}, loss_qr={:.3f}, loss_tp={:.3f}, "
+                            "devMRR={:.3f}, DevLossQR={:.3f}, DevLossTP={:.3f}, devMacroP={:.3f}\n".format(
                                 epoch,
                                 train_cost / (i+1),  # i.e. divided by N training batches
                                 train_loss_qr / (i+1),  # i.e. divided by N training batches
                                 train_loss_tp / (i+1),  # i.e. divided by N training batches
                                 dev_MRR,
-                                dev_hinge_loss,
-                                dev_mac_p
+                                dev_qr_loss,
+                                dev_tp_loss,
+                                dev_MAC_P
                             )
                         )
                         say("\n{}\n".format(result_table_qr))

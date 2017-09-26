@@ -56,13 +56,13 @@ def main():
         ))
 
         if args.layer.lower() == "lstm":
-            from models import LstmQATP as Model
+            from models import LstmQRTP as Model
         elif args.layer.lower() == "bilstm":
-            from models import BiLstmQATP as Model
+            from models import BiLstmQRTP as Model
         elif args.layer.lower() == "cnn":
-            from models import CnnQATP as Model
+            from models import CnnQRTP as Model
         elif args.layer.lower() == "gru":
-            from models import GruQATP as Model
+            from models import GruQRTP as Model
 
         model = Model(args, embedding_layer, len(label_tags), weights=weights if args.reweight else None)
         model.ready()
