@@ -78,7 +78,7 @@ class ModelQRTP(object):
                 for param in tf.trainable_variables():
                     l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
                 self.l2_reg = l2_reg
-            self.cost = self.args.qa_weight*self.loss_qr + self.args.tp_weight*self.loss_tp + self.l2_reg
+            self.cost = self.args.qr_weight*self.loss_qr + self.args.tp_weight*self.loss_tp + self.l2_reg
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):
@@ -190,7 +190,7 @@ class ModelQRTP(object):
     def train_model(self, train_batches, dev=None, test=None, assign_ops=None):
         with tf.Session() as sess:
 
-            result_table_qa = PrettyTable(
+            result_table_qr = PrettyTable(
                 ["Epoch", "dev MAP", "dev MRR", "dev P@1", "dev P@5", "tst MAP", "tst MRR", "tst P@1", "tst P@5"]
             )
             dev_MAP = dev_MRR = dev_P1 = dev_P5 = 0
@@ -229,7 +229,7 @@ class ModelQRTP(object):
             train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
-            # DEV for QA
+            # DEV for QR
             dev_loss = tf.placeholder(tf.float32)
             dev_map = tf.placeholder(tf.float32)
             dev_mrr = tf.placeholder(tf.float32)
@@ -320,7 +320,7 @@ class ModelQRTP(object):
                         if self.args.performance == "dev_mrr" and dev_MRR > best_dev_performance:
                             unchanged = 0
                             best_dev_performance = dev_MRR
-                            result_table_qa.add_row(
+                            result_table_qr.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
                             result_table_tp.add_row(
@@ -332,7 +332,19 @@ class ModelQRTP(object):
                         elif self.args.performance == "dev_loss" and dev_hinge_loss < worse_dev_loss:
                             unchanged = 0
                             worse_dev_loss = dev_hinge_loss
-                            result_table_qa.add_row(
+                            result_table_qr.add_row(
+                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
+                            )
+                            result_table_tp.add_row(
+                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
+                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
+                            )
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "p_macro" and dev_mac_p > best_dev_performance:
+                            unchanged = 0
+                            best_dev_performance = dev_mac_p
+                            result_table_qr.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
                             result_table_tp.add_row(
@@ -342,16 +354,19 @@ class ModelQRTP(object):
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
-                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss_qr={:.3f}\tloss_tp={:.3f}\tMRR={:.2f},{:.2f}\tDevLoss={:.3f}\n".format(
-                            epoch,
-                            train_cost / (i+1),  # i.e. divided by N training batches
-                            train_loss_qr / (i+1),  # i.e. divided by N training batches
-                            train_loss_tp / (i+1),  # i.e. divided by N training batches
-                            dev_MRR,
-                            best_dev_performance,
-                            dev_hinge_loss
-                        ))
-                        say("\n{}\n".format(result_table_qa))
+                        say(
+                            "\r\n\nEpoch {}\tcost={:.3f}\tloss_qr={:.3f}\tloss_tp={:.3f}\t"
+                            "devMRR={:.3f}\tDevLoss={:.3f}\tdevMacroP={:.3f}\n".format(
+                                epoch,
+                                train_cost / (i+1),  # i.e. divided by N training batches
+                                train_loss_qr / (i+1),  # i.e. divided by N training batches
+                                train_loss_tp / (i+1),  # i.e. divided by N training batches
+                                dev_MRR,
+                                dev_hinge_loss,
+                                dev_mac_p
+                            )
+                        )
+                        say("\n{}\n".format(result_table_qr))
                         say("\n{}\n".format(result_table_tp))
 
     def save(self, sess, path, step):
