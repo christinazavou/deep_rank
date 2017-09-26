@@ -45,7 +45,7 @@ class ModelQRTP(object):
         with tf.name_scope('QaLoss'):
             diff = neg_scores - pos_scores + 1.0
             loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
-            self.loss_qa = loss
+            self.loss_qr = loss
 
     def _initialize_output_graph_tp(self):
 
@@ -78,7 +78,7 @@ class ModelQRTP(object):
                 for param in tf.trainable_variables():
                     l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
                 self.l2_reg = l2_reg
-            self.cost = self.args.qa_weight*self.loss_qa + self.args.tp_weight*self.loss_tp + self.l2_reg
+            self.cost = self.args.qa_weight*self.loss_qr + self.args.tp_weight*self.loss_tp + self.l2_reg
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):
@@ -174,8 +174,8 @@ class ModelQRTP(object):
 
     def train_batch(self, batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
         titles, bodies, pairs, tags = batch
-        _, _step, _loss_qa, _loss_tp, _cost, _summary = sess.run(
-            [train_op, global_step, self.loss_qa, self.loss_tp, self.cost, train_summary_op],
+        _, _step, _loss_qr, _loss_tp, _cost, _summary = sess.run(
+            [train_op, global_step, self.loss_qr, self.loss_tp, self.cost, train_summary_op],
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
@@ -185,7 +185,7 @@ class ModelQRTP(object):
             }
         )
         train_summary_writer.add_summary(_summary, _step)
-        return _step, _loss_qa, _loss_tp, _cost
+        return _step, _loss_qr, _loss_tp, _cost
 
     def train_model(self, train_batches, dev=None, test=None, assign_ops=None):
         with tf.Session() as sess:
@@ -221,11 +221,11 @@ class ModelQRTP(object):
             if self.args.save_dir != "":
                 print("Writing to {}\n".format(self.args.save_dir))
 
-            loss_qa_summary = tf.summary.scalar("loss_qa", self.loss_qa)
+            loss_qr_summary = tf.summary.scalar("loss_qr", self.loss_qr)
             loss_tp_summary = tf.summary.scalar("loss_tp", self.loss_tp)
             cost_summary = tf.summary.scalar("cost", self.cost)
 
-            train_summary_op = tf.summary.merge([loss_qa_summary, loss_tp_summary, cost_summary])
+            train_summary_op = tf.summary.merge([loss_qr_summary, loss_tp_summary, cost_summary])
             train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
@@ -277,16 +277,16 @@ class ModelQRTP(object):
 
                 N = len(train_batches)
 
-                train_loss_qa = 0.0
+                train_loss_qr = 0.0
                 train_loss_tp = 0.0
                 train_cost = 0.0
 
                 for i in xrange(N):
-                    cur_step, cur_loss_qa, cur_loss_tp, cur_cost = self.train_batch(
+                    cur_step, cur_loss_qr, cur_loss_tp, cur_cost = self.train_batch(
                         train_batches[i], train_op, global_step, train_summary_op, train_summary_writer, sess
                     )
 
-                    train_loss_qa += cur_loss_qa
+                    train_loss_qr += cur_loss_qr
                     train_loss_tp += cur_loss_tp
                     train_cost += cur_cost
 
@@ -342,10 +342,10 @@ class ModelQRTP(object):
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
-                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss_qa={:.3f}\tloss_tp={:.3f}\tMRR={:.2f},{:.2f}\tDevLoss={:.3f}\n".format(
+                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss_qr={:.3f}\tloss_tp={:.3f}\tMRR={:.2f},{:.2f}\tDevLoss={:.3f}\n".format(
                             epoch,
                             train_cost / (i+1),  # i.e. divided by N training batches
-                            train_loss_qa / (i+1),  # i.e. divided by N training batches
+                            train_loss_qr / (i+1),  # i.e. divided by N training batches
                             train_loss_tp / (i+1),  # i.e. divided by N training batches
                             dev_MRR,
                             best_dev_performance,
