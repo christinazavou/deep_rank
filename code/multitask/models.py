@@ -408,12 +408,9 @@ class ModelQRTP(object):
             for param_name, param_value in params_values.iteritems():
                 if param_name in self.params:
                     print param_name, ' is in my dict'
-                    try:
-                        variable = graph.get_tensor_by_name(param_name)
-                        assign_op = tf.assign(variable, param_value)
-                        assign_ops[param_name] = assign_op
-                    except:
-                        raise Exception("{} not found in my graph".format(param_name))
+                    variable = graph.get_tensor_by_name(param_name)
+                    assign_op = tf.assign(variable, param_value)
+                    assign_ops[param_name] = assign_op
                 else:
                     print param_name, ' is not in my dict'
         print '\n'
