@@ -10,7 +10,7 @@ import myio
 import os
 
 
-class ModelQA(object):
+class ModelQR(object):
 
     def ready(self):
         self._initialize_placeholders_graph()
@@ -319,7 +319,7 @@ class ModelQA(object):
         return total_parameters
 
 
-class LstmQA(ModelQA):
+class LstmQR(ModelQR):
 
     def __init__(self, args, embedding_layer, weights=None):
         self.args = args
@@ -427,7 +427,7 @@ class LstmQA(ModelQA):
         return s
 
 
-class BiLstmQA(ModelQA):
+class BiLstmQR(ModelQR):
 
     def __init__(self, args, embedding_layer, weights=None):
         self.args = args
@@ -556,7 +556,7 @@ class BiLstmQA(ModelQA):
         return s
 
 
-class CnnQA(ModelQA):
+class CnnQR(ModelQR):
 
     def __init__(self, args, embedding_layer, weights=None):
         self.args = args
@@ -682,7 +682,7 @@ class CnnQA(ModelQA):
             self.h_final = self.normalize_2d(h_final)
 
 
-class GruQA(ModelQA):
+class GruQR(ModelQR):
 
     def __init__(self, args, embedding_layer, weights=None):
         self.args = args

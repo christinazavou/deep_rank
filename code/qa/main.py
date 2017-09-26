@@ -25,13 +25,13 @@ def main():
         weights = myio.create_idf_weights(args.corpus, embedding_layer)
 
     if args.layer.lower() == "lstm":
-        from models import LstmQA as Model
+        from models import LstmQR as Model
     elif args.layer.lower() == "bilstm":
-        from models import BiLstmQA as Model
+        from models import BiLstmQR as Model
     elif args.layer.lower() == "cnn":
-        from models import CnnQA as Model
+        from models import CnnQR as Model
     elif args.layer.lower() == "gru":
-        from models import GruQA as Model
+        from models import GruQR as Model
 
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)

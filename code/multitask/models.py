@@ -10,7 +10,7 @@ from qa.myio import say
 import os
 
 
-class ModelQATP(object):
+class ModelQRTP(object):
 
     def ready(self):
         self._initialize_placeholders_graph()
@@ -433,7 +433,7 @@ class ModelQATP(object):
         return total_parameters
 
 
-class LstmQATP(ModelQATP):
+class LstmQRTP(ModelQRTP):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args
@@ -534,7 +534,7 @@ class LstmQATP(ModelQATP):
         return s
 
 
-class BiLstmQATP(ModelQATP):
+class BiLstmQRTP(ModelQRTP):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args
@@ -657,7 +657,7 @@ class BiLstmQATP(ModelQATP):
         return s
 
 
-class CnnQATP(ModelQATP):
+class CnnQRTP(ModelQRTP):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args
@@ -769,7 +769,7 @@ class CnnQATP(ModelQATP):
                 self.h_final = self.normalize_2d(h_final)
 
 
-class GruQATP(ModelQATP):
+class GruQRTP(ModelQRTP):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args
