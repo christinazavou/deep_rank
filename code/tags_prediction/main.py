@@ -79,7 +79,7 @@ def main():
         label_tags = label_tags.keys()
     print '\nloaded {} tags'.format(len(label_tags))
 
-    raw_corpus = myio.read_corpus(args.corpus, with_tags=True)
+    raw_corpus = myio.read_corpus(args.corpus_w_tags, with_tags=True)
 
     embedding_layer = create_embedding_layer(
         n_d=240,
@@ -93,7 +93,7 @@ def main():
     padding_id = embedding_layer.vocab_map["<padding>"]
 
     if args.reweight:
-        weights = myio.create_idf_weights(args.corpus, embedding_layer, with_tags=True)
+        weights = myio.create_idf_weights(args.corpus_w_tags, embedding_layer, with_tags=True)
 
     if args.layer.lower() == "lstm":
         from models import LstmMultiTagsClassifier as Model
@@ -133,7 +133,7 @@ def main():
 if __name__ == '__main__':
 
     argparser = argparse.ArgumentParser(sys.argv[0])
-    argparser.add_argument("--corpus", type=str)
+    argparser.add_argument("--corpus_w_tags", type=str)
     argparser.add_argument("--df_path", type=str)
     argparser.add_argument("--tags_file", type=str)
 

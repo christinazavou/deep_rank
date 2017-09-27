@@ -62,7 +62,7 @@ class ModelMultiTagsClassifier(object):
 
             with tf.name_scope('cost'):
                 with tf.name_scope('loss'):
-                    self.loss = -tf.reduce_sum(
+                    self.loss = -tf.reduce_mean(
                         (self.target * tf.log(self.output + 1e-9)) + (
                             (1 - self.target) * tf.log(1 - self.output + 1e-9)),
                         name='cross_entropy'
@@ -100,6 +100,8 @@ class ModelMultiTagsClassifier(object):
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
+        loss = -np.mean((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
+
         ev = Evaluation(outputs, predictions, targets)
         results = [round(ev.lr_ap_score(), 4), round(ev.lr_loss(), 4), round(ev.cov_error(), 4)]
 
@@ -121,7 +123,12 @@ class ModelMultiTagsClassifier(object):
 
         ev = Evaluation(outputs, predictions, targets)
         results += [ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')]
-        return tuple(results)
+
+        print 'P@1 ', ev.Precision(1)
+        print 'P@5 ', ev.Precision(5)
+        print 'R@1 ', ev.Recall(1)
+        print 'R@5 ', ev.Recall(5)
+        return loss, tuple(results)
 
     def train_batch(self, titles, bodies, y_batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
         _, _step, _loss, _cost, _summary = sess.run(
@@ -259,8 +266,10 @@ class ModelMultiTagsClassifier(object):
                         myio.say("\r{}/{}".format(i, N))
 
                     if i == N-1:  # EVAL
+                        dev_loss = 0
+
                         if dev:
-                            (
+                            dev_loss, (
                                 dev_LRAP, dev_LRL, dev_CE,
                                 (dev_MAC_P, dev_MAC_R, dev_MAC_F1),
                                 (dev_MIC_P, dev_MIC_R, dev_MIC_F1)
@@ -274,7 +283,7 @@ class ModelMultiTagsClassifier(object):
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
 
                         if test:
-                            (
+                            test_loss, (
                                 test_LRAP, test_LRL, test_CE,
                                 (test_MAC_P, test_MAC_R, test_MAC_F1),
                                 (test_MIC_P, test_MIC_R, test_MIC_F1)
@@ -324,10 +333,11 @@ class ModelMultiTagsClassifier(object):
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
-                        myio.say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tPRE={:.2f},{:.2f}\n".format(
+                        myio.say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tDevLoss={:.3f}\tPRE={:.2f},{:.2f}\n".format(
                             epoch,
                             train_cost / (i+1),  # i.e. divided by N training batches
                             train_loss / (i+1),  # i.e. divided by N training batches
+                            dev_loss,
                             dev_MIC_P,
                             best_dev_performance
                         ))

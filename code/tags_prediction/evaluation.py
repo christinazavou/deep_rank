@@ -44,6 +44,7 @@ class Evaluation(object):
     #     accuracy = np.mean(correct_prediction)
     #     return accuracy
 
+    # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.
     def Recall(self, precision_at):
         cols = np.argsort(self.outputs, 1)[:, -precision_at:]  # because argsort makes in ascending order
         rel_per_sample = np.clip(np.sum(self.targets, 1), 0, precision_at)
@@ -53,6 +54,7 @@ class Evaluation(object):
             found_per_sample[sample] = np.sum(result == 1)
         return np.mean(found_per_sample / rel_per_sample.astype(np.float32))
 
+    # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.
     def Precision(self, precision_at):
         cols = np.argsort(self.outputs, 1)[:, -precision_at:]  # because argsort makes in ascending order
         found_per_sample = np.zeros(self.outputs.shape[0])
@@ -60,3 +62,29 @@ class Evaluation(object):
             result = self.targets[sample, c]
             found_per_sample[sample] = np.sum(result == 1)
         return np.mean(found_per_sample / float(precision_at))
+
+    # todo: should input a list of 0 and 1
+    # # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.
+    # def DCG(self, ndcg_at):
+    #     cols = np.argsort(self.outputs, 1)[:, -ndcg_at:]  # because argsort makes in ascending order
+    #     ndcg_per_sample = np.zeros(self.outputs.shape[0])
+    #     for sample, c in enumerate(cols):
+    #         ndcg_per_sample[sample] = self.targets[sample, c[0]]
+    #         for rank, retrieved_relevance in enumerate(self.targets[sample, c]):
+    #             if rank == 0:  # already accounted
+    #                 continue
+    #             if retrieved_relevance != 0:
+    #                 ndcg_per_sample[sample] += retrieved_relevance / np.log2((rank + 1 + 1))
+    #                 # dcg that puts more emphasis on retrieving relevant docs:
+    #                 # dcg += (math.pow(2, retrieved_relevance) - 1.) / np.log2((rank + 1 + 1))  # in binary relevance no diff !
+    #     return ndcg_per_sample
+    #
+    # def ideal_rank_relevances(self, ndcg_at):
+    #     rel_per_sample = np.clip(np.sum(self.targets, 1), 0, ndcg_at)
+    #     ideal_ranks = np.zeros((self.targets.shape[0], ndcg_at))
+    #     for sample, rel_num in enumerate(rel_per_sample):
+    #         ideal_ranks[sample, 0:rel_num] = 1
+    #     return ideal_ranks
+    #
+    # def NDCG(self, ndcg_at):
+    #     return np.divide(self.DCG(ndcg_at), self.DCG(self.ideal_rank_relevances(ndcg_at)))

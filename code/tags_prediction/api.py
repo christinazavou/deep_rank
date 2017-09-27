@@ -96,7 +96,7 @@ class TPAPI:
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
-    argparser.add_argument("--corpus", type=str, default="")
+    argparser.add_argument("--corpus_w_tags", type=str, default="")
     argparser.add_argument("--model", type=str)
     argparser.add_argument("--embeddings", type=str, default="")
     argparser.add_argument("--layer", type=str, default="lstm")
@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
     label_tags = pickle.load(open(args.tags_file, 'rb'))
 
-    raw_corpus = myio.read_corpus(args.corpus, with_tags=True)
+    raw_corpus = myio.read_corpus(args.corpus_w_tags, with_tags=True)
     embedding_layer = create_embedding_layer(
         raw_corpus,
         n_d=10,

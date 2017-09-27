@@ -66,7 +66,11 @@ class ModelQRTP(object):
             )
 
         with tf.name_scope('TpLoss'):
-            self.loss_tp = -tf.reduce_sum(
+            # self.loss_tp = -tf.reduce_sum(
+            #     (self.target * tf.log(self.output + 1e-9)) + ((1 - self.target) * tf.log(1 - self.output + 1e-9)),
+            #     name='cross_entropy'
+            # )
+            self.loss_tp = -tf.reduce_mean(
                 (self.target * tf.log(self.output + 1e-9)) + ((1 - self.target) * tf.log(1 - self.output + 1e-9)),
                 name='cross_entropy'
             )
@@ -151,7 +155,7 @@ class ModelQRTP(object):
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
-        tp_loss = -np.sum((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
+        tp_loss = -np.mean((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
 
         ev = TPEvaluation(outputs, predictions, targets)
         results = [round(ev.lr_ap_score(), 4), round(ev.lr_loss(), 4), round(ev.cov_error(), 4)]
@@ -173,6 +177,10 @@ class ModelQRTP(object):
         ev = TPEvaluation(outputs, predictions, targets)
         results += [ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')]
 
+        print 'P@1 ', ev.Precision(1)
+        print 'P@5 ', ev.Precision(5)
+        print 'R@1 ', ev.Recall(1)
+        print 'R@5 ', ev.Recall(5)
         return MAP, MRR, P1, P5, qr_loss, tp_loss, tuple(results)
 
     def train_batch(self, batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
@@ -301,6 +309,8 @@ class ModelQRTP(object):
                         say("\r{}/{}".format(i, N))
 
                     if i == N-1:  # EVAL
+                        dev_tp_loss = 0
+
                         if dev:
                             dev_MAP, dev_MRR, dev_P1, dev_P5, dev_qr_loss, dev_tp_loss, (
                                 dev_LRAP, dev_LRL, dev_CE,
