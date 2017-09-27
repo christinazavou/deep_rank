@@ -1,5 +1,6 @@
 from sklearn.metrics import precision_recall_fscore_support
 from sklearn.metrics import label_ranking_average_precision_score, coverage_error, label_ranking_loss
+import numpy as np
 
 
 class Evaluation(object):
@@ -42,3 +43,20 @@ class Evaluation(object):
     #     correct_prediction = np.equal(self.predictions, self.targets)
     #     accuracy = np.mean(correct_prediction)
     #     return accuracy
+
+    def Recall(self, precision_at):
+        cols = np.argsort(self.outputs, 1)[:, -precision_at:]  # because argsort makes in ascending order
+        rel_per_sample = np.clip(np.sum(self.targets, 1), 0, precision_at)
+        found_per_sample = np.zeros(self.outputs.shape[0])
+        for sample, c in enumerate(cols):
+            result = self.targets[sample, c]
+            found_per_sample[sample] = np.sum(result == 1)
+        return np.mean(found_per_sample / rel_per_sample.astype(np.float32))
+
+    def Precision(self, precision_at):
+        cols = np.argsort(self.outputs, 1)[:, -precision_at:]  # because argsort makes in ascending order
+        found_per_sample = np.zeros(self.outputs.shape[0])
+        for sample, c in enumerate(cols):
+            result = self.targets[sample, c]
+            found_per_sample[sample] = np.sum(result == 1)
+        return np.mean(found_per_sample / float(precision_at))

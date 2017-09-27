@@ -9,7 +9,7 @@ import pickle
 import tensorflow as tf
 
 
-class QRAPI:
+class TPAPI:
 
     def __init__(self, model_path, emb_layer, session, output_dim, layer='lstm'):
 
@@ -56,23 +56,49 @@ class QRAPI:
             outputs.append(output)
             predictions.append(prediction)
             targets.append(tags)
+
         outputs = np.vstack(outputs)
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
         ev = Evaluation(outputs, predictions, targets)
-        print 'MACRO : ',  ev.precision_recall_fscore('macro')
+        print 'label_ranking_average_precision_score: ', round(ev.lr_ap_score(), 4)
+        print 'label_ranking_loss: ', round(ev.lr_loss(), 4)
+        print 'coverage_error: ', round(ev.cov_error(), 4)
+
+        """------------------------------------------remove ill evaluation-------------------------------------------"""
+        eval_labels = []
+        for label in range(targets.shape[1]):
+            if (targets[:, label] == np.ones(targets.shape[0])).any():
+                eval_labels.append(label)
+        print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
+        outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
+
+        eval_samples = []
+        for sample in range(targets.shape[0]):
+            if (targets[sample, :] == np.ones(targets.shape[1])).any():
+                eval_samples.append(sample)
+        print '\n{} samples ouf of {} will be evaluated (zero-labeled-samples removed).'.format(len(eval_samples), outputs.shape[0])
+        outputs, predictions, targets = outputs[eval_samples, :], predictions[eval_samples, :], targets[eval_samples, :]
+        """------------------------------------------remove ill evaluation-------------------------------------------"""
+
+        ev = Evaluation(outputs, predictions, targets)
+        print 'MACRO : ', ev.precision_recall_fscore('macro')
         print 'MICRO : ', ev.precision_recall_fscore('micro')
-        print 'label_ranking_average_precision_score: ', ev.lr_ap_score()
-        print 'coverage_error: ', ev.cov_error()
-        print 'label_ranking_loss: ', ev.lr_loss()
+
+        print 'R@1 : ', ev.Recall(1)
+        print 'R@5 : ', ev.Recall(5)
+        print 'R@10 : ', ev.Recall(10)
+        print 'P@1 : ', ev.Precision(1)
+        print 'P@5 : ', ev.Precision(5)
+        print 'P@10 : ', ev.Precision(10)
 
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
-    argparser.add_argument("--model_path", type=str)
-    argparser.add_argument("--corpus_path", type=str, default="")
-    argparser.add_argument("--emb_path", type=str, default="")
+    argparser.add_argument("--corpus", type=str, default="")
+    argparser.add_argument("--model", type=str)
+    argparser.add_argument("--embeddings", type=str, default="")
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--df_corpus", type=str, default="")
     argparser.add_argument("--max_seq_len", type=int, default=100)
@@ -86,50 +112,37 @@ if __name__ == '__main__':
 
     label_tags = pickle.load(open(args.tags_file, 'rb'))
 
-    raw_corpus = myio.read_corpus(args.corpus_path, with_tags=True)
+    raw_corpus = myio.read_corpus(args.corpus, with_tags=True)
     embedding_layer = create_embedding_layer(
-                raw_corpus,
-                n_d=10,
-                cut_off=1,
-                embs=load_embedding_iterator(args.emb_path)
-            )
+        raw_corpus,
+        n_d=10,
+        cut_off=1,
+        embs=load_embedding_iterator(args.embeddings)
+    )
 
     with tf.Session() as sess:
 
-        myqrapi = QRAPI(args.model_path, embedding_layer, sess, 100, args.layer)
+        myqrapi = TPAPI(args.model, embedding_layer, sess, len(label_tags), args.layer)
 
         embedding_layer = myqrapi.model.embedding_layer
 
-        ids_corpus_tags = myio.make_tag_labels(df, label_tags)
-
-        ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, ids_corpus_tags, max_len=args.max_seq_len)
+        ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, label_tags, max_len=args.max_seq_len)
 
         print("vocab size={}, corpus size={}\n".format(embedding_layer.n_V, len(raw_corpus)))
 
         padding_id = embedding_layer.vocab_map["<padding>"]
-
-        # weights = myio.create_idf_weights(args.corpus_path, embedding_layer)
 
         say("vocab size={}, corpus size={}\n".format(
             embedding_layer.n_V,
             len(raw_corpus)
         ))
 
-        # if args.reweight:
-        #     weights = myio.create_idf_weights(args.corpus, embedding_layer, with_tags=True)
-
-        eval_batches = myio.create_batches(
-            df, ids_corpus, 'dev', myqrapi.model.args.batch_size, padding_id,
-            pad_left=not myqrapi.model.args.average
-        )
+        eval_batches = myio.create_batches(df, ids_corpus, 'dev', myqrapi.model.args.batch_size, padding_id)
         print 'DEV evaluation:'
         print '{} batches.'.format(len(eval_batches))
         myqrapi.evaluate(eval_batches, sess)
 
-        eval_batches = myio.create_batches(
-            df, ids_corpus, 'test', myqrapi.model.args.batch_size, padding_id,
-            pad_left=not myqrapi.model.args.average
-        )
+        eval_batches = myio.create_batches(df, ids_corpus, 'test', myqrapi.model.args.batch_size, padding_id)
         print 'TEST evaluation:'
         print '{} batches.'.format(len(eval_batches))
         myqrapi.evaluate(eval_batches, sess)

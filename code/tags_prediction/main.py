@@ -104,9 +104,9 @@ def main():
     elif args.layer.lower() == "gru":
         from models import GruMultiTagsClassifier as Model
 
-    dev = myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id, pad_left=not args.average)
-    test = myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id, pad_left=not args.average)
-    train = myio.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id, pad_left=not args.average)
+    dev = myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id)
+    test = myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id)
+    train = myio.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id)
     print '{} batches of {} instances in dev, {} in test and {} in train.'.format(
         len(dev), args.batch_size, len(test), len(train))
 

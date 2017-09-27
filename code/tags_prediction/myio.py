@@ -101,15 +101,7 @@ def create_idf_weights(corpus_path, embedding_layer, with_tags=False):
     return tf.Variable(weights, name="word_weights", dtype=tf.float32)
 
 
-# def make_tag_labels(df, tags_selected):
-#     df = df[['id', 'title', 'body']+tags_selected]
-#     ids_corpus_tags = {}
-#     for idx, row in df.iterrows():
-#         ids_corpus_tags[row['id']] = row[tags_selected].values
-#     return ids_corpus_tags
-
-
-def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None, pad_left=True):
+def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None):
 
     # returns a list of batches where each batch is a list of (titles, bodies tags-as-np-array)
 
@@ -140,7 +132,7 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None,
         tag_labels.append(tag)
 
         if cnt == batch_size or u == N-1:
-            titles, bodies, tag_labels = create_one_batch(titles, bodies, tag_labels, padding_id, pad_left)
+            titles, bodies, tag_labels = create_one_batch(titles, bodies, tag_labels, padding_id)
             batches.append((titles, bodies, tag_labels))
 
             titles, bodies, tag_labels = [], [], []
@@ -149,25 +141,17 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None,
     return batches
 
 
-def create_one_batch(titles, bodies, tag_labels, padding_id, pad_left):
+def create_one_batch(titles, bodies, tag_labels, padding_id):
     # each batch has its own questions with its own max-length ...
     max_title_len = max(1, max(len(x) for x in titles))
     max_body_len = max(1, max(len(x) for x in bodies))
     # pad according to those max lengths
-    if pad_left:
-        titles = np.column_stack(
-            [np.pad(x, (max_title_len-len(x), 0), 'constant', constant_values=padding_id) for x in titles]
-        )
-        bodies = np.column_stack(
-            [np.pad(x, (max_body_len-len(x), 0), 'constant', constant_values=padding_id) for x in bodies]
-        )
-    else:
-        titles = np.column_stack(
-            [np.pad(x, (0, max_title_len-len(x)), 'constant', constant_values=padding_id) for x in titles]
-        )
-        bodies = np.column_stack(
-            [np.pad(x, (0, max_body_len-len(x)), 'constant', constant_values=padding_id) for x in bodies]
-        )
+    titles = np.column_stack(
+        [np.pad(x, (0, max_title_len-len(x)), 'constant', constant_values=padding_id) for x in titles]
+    )
+    bodies = np.column_stack(
+        [np.pad(x, (0, max_body_len-len(x)), 'constant', constant_values=padding_id) for x in bodies]
+    )
     tag_labels = np.stack(tag_labels)
     return titles, bodies, tag_labels
 
