@@ -8,7 +8,7 @@
 # from sklearn.metrics.pairwise import cosine_similarity
 #
 # import qa.myio
-# from qa.deepnwide.main_model import Model
+# from qa.WideNDeep.main_model import Model
 # from qa.evaluation import Evaluation
 # from qa.myio import say
 # from utils import load_embedding_iterator
