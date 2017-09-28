@@ -86,12 +86,10 @@ class TPAPI:
         print 'MACRO : ', ev.precision_recall_fscore('macro')
         print 'MICRO : ', ev.precision_recall_fscore('micro')
 
-        print 'R@1 : ', ev.Recall(1)
-        print 'R@5 : ', ev.Recall(5)
-        print 'R@10 : ', ev.Recall(10)
         print 'P@1 : ', ev.Precision(1)
         print 'P@5 : ', ev.Precision(5)
-        print 'P@10 : ', ev.Precision(10)
+        print 'R@1 : ', ev.Recall(1)
+        print 'R@5 : ', ev.Recall(5)
 
 
 if __name__ == '__main__':

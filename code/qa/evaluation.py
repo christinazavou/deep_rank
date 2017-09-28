@@ -17,7 +17,7 @@ class Evaluation(object):
                     relevant += 1.
             scores.append(relevant*1.0/len(temp))
 
-        return sum(scores)/len(scores)
+        return round(100 * (sum(scores)/len(scores)), 3)
 
     def MAP(self):
         scores = []
@@ -35,7 +35,7 @@ class Evaluation(object):
             else:
                 scores.append(precision_at_r.sum() / relevant)
 
-        return sum(scores)/len(scores) if len(scores) > 0 else 0.0
+        return round(100 * (sum(scores)/len(scores) if len(scores) > 0 else 0.0), 3)
 
     def MRR(self):
 
@@ -45,4 +45,4 @@ class Evaluation(object):
                 if score == 1:
                     scores.append(1./(rank+1))
                     break
-        return sum(scores)/len(scores) if len(scores) > 0 else 0.0
+        return round(100 * (sum(scores)/len(scores) if len(scores) > 0 else 0.0), 3)

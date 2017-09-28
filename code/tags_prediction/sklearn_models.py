@@ -17,6 +17,8 @@ from sklearn.multiclass import OneVsRestClassifier
 from sklearn.preprocessing import normalize
 from sklearn.svm import LinearSVC
 from sklearn.svm import SVC
+from evaluation import Evaluation
+
 
 # from tags_prediction.statistics import read_df
 # from utils import load_embedding_iterator
@@ -81,7 +83,7 @@ def grid_search(train_x, train_y, parameters, pipeline, scoring='f1_micro'):
 
 
 def evaluate(test_x, test_y, labels, model):
-
+    """"""
     """------------------------------------------remove ill evaluation-------------------------------------------"""
     eval_labels = []
     for label in range(test_y.shape[1]):
@@ -110,7 +112,9 @@ def evaluate(test_x, test_y, labels, model):
         print 'label ranking loss: ', label_ranking_loss(test_y, y_scores)
         print
     except:
-        pass
+        y_scores = model.predict(test_x)
+        y_scores = y_scores[:, eval_labels]
+
     predictions = model.predict(test_x)
     """------------------------------------------remove ill evaluation-------------------------------------------"""
     predictions = predictions[:, eval_labels]
@@ -120,6 +124,12 @@ def evaluate(test_x, test_y, labels, model):
     # print results.head(len(labels))
     print 'MACRO PRECISION RECALL F1: ', precision_recall_fscore_support(test_y, predictions, average='macro')
     print 'MICRO PRECISION RECALL F1: ', precision_recall_fscore_support(test_y, predictions, average='micro')
+
+    ev = Evaluation(y_scores, predictions, test_y)
+    print 'P@1 ', ev.Precision(1)
+    print 'P@5 ', ev.Precision(5)
+    print 'R@1 ', ev.Recall(1)
+    print 'R@1 ', ev.Recall(5)
 
 
 def get_data(df, type_name, labels):

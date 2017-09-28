@@ -22,9 +22,6 @@ def main():
     if args.reweight:
         weights = qaio.create_idf_weights(args.corpus, embedding_layer)
 
-    df = read_df(args.df_path)
-    df = df.fillna(u'')
-
     label_tags = pickle.load(open(args.tags_file, 'rb'))
     if isinstance(label_tags, dict):
         print 'from dict labels to list.'
@@ -85,7 +82,6 @@ if __name__ == "__main__":
     argparser = argparse.ArgumentParser(sys.argv[0])
 
     argparser.add_argument("--corpus_w_tags", type=str)
-    argparser.add_argument("--df_path", type=str)
     argparser.add_argument("--tags_file", type=str)
 
     argparser.add_argument("--corpus", type=str)

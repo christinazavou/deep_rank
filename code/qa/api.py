@@ -138,5 +138,5 @@ if __name__ == '__main__':
                     pid, print_qids_similar, print_qids_candidates,
                     print_ranked_scores,
                     print_ranked_labels,
-                    round(devmap[i],4), round(devmrr[i],4), round(devpat1[i],4), round(devpat5[i],4)
+                    devmap[i], devmrr[i], devpat1[i], devpat5[i]
                 ))

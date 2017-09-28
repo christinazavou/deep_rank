@@ -146,10 +146,10 @@ class ModelQRTP(object):
             res.append(ranked_labels)
 
         e = QAEvaluation(res)
-        MAP = round(e.MAP(), 4)
-        MRR = round(e.MRR(), 4)
-        P1 = round(e.Precision(1), 4)
-        P5 = round(e.Precision(5), 4)
+        MAP = e.MAP()
+        MRR = e.MRR()
+        P1 = e.Precision(1)
+        P5 = e.Precision(5), 4
 
         outputs = np.vstack(outputs)
         predictions = np.vstack(predictions)
@@ -158,7 +158,7 @@ class ModelQRTP(object):
         tp_loss = -np.mean((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
 
         ev = TPEvaluation(outputs, predictions, targets)
-        results = [round(ev.lr_ap_score(), 4), round(ev.lr_loss(), 4), round(ev.cov_error(), 4)]
+        results = [ev.lr_ap_score(), ev.lr_loss(), ev.cov_error()]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []
         for label in range(targets.shape[1]):

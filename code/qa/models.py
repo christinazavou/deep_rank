@@ -116,10 +116,10 @@ class ModelQR(object):
             res.append(ranked_labels)
 
         e = Evaluation(res)
-        MAP = round(e.MAP(), 4)
-        MRR = round(e.MRR(), 4)
-        P1 = round(e.Precision(1), 4)
-        P5 = round(e.Precision(5), 4)
+        MAP = e.MAP()
+        MRR = e.MRR()
+        P1 = e.Precision(1)
+        P5 = e.Precision(5)
         return MAP, MRR, P1, P5, hinge_loss
 
     def train_batch(self, titles, bodies, pairs, train_op, global_step, train_summary_op, train_summary_writer, sess):

@@ -103,7 +103,7 @@ class ModelMultiTagsClassifier(object):
         loss = -np.mean((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
 
         ev = Evaluation(outputs, predictions, targets)
-        results = [round(ev.lr_ap_score(), 4), round(ev.lr_loss(), 4), round(ev.cov_error(), 4)]
+        results = [ev.lr_ap_score(), ev.lr_loss(), ev.cov_error()]
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []

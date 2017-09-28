@@ -22,7 +22,7 @@ class Evaluation(object):
 
     def precision_recall_fscore(self, average='macro'):
         p, r, f, _ = precision_recall_fscore_support(self.targets, self.predictions, average=average)
-        return round(p, 4), round(r, 4), round(f, 4)
+        return round(100*p, 3), round(100*r, 3), round(100*f, 3)
 
     # def precision_recall(self):
     #     # true positives
@@ -52,7 +52,7 @@ class Evaluation(object):
         for sample, c in enumerate(cols):
             result = self.targets[sample, c]
             found_per_sample[sample] = np.sum(result == 1)
-        return np.mean(found_per_sample / rel_per_sample.astype(np.float32))
+        return round(100 * np.mean(found_per_sample / rel_per_sample.astype(np.float32)), 3)
 
     # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.
     def Precision(self, precision_at):
@@ -61,7 +61,7 @@ class Evaluation(object):
         for sample, c in enumerate(cols):
             result = self.targets[sample, c]
             found_per_sample[sample] = np.sum(result == 1)
-        return np.mean(found_per_sample / float(precision_at))
+        return round(100 * np.mean(found_per_sample / float(precision_at)), 3)
 
     # todo: should input a list of 0 and 1
     # # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.
