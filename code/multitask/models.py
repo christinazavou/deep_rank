@@ -46,6 +46,7 @@ class ModelQRTP(object):
             diff = neg_scores - pos_scores + 1.0
             loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
             self.loss_qr = loss
+            self.loss_qr *= self.args.qr_mul if 'qr_mul' in self.args else 1.  # version compatibility
 
     def _initialize_output_graph_tp(self):
 
@@ -74,6 +75,7 @@ class ModelQRTP(object):
                 (self.target * tf.log(self.output + 1e-9)) + ((1 - self.target) * tf.log(1 - self.output + 1e-9)),
                 name='cross_entropy'
             )
+            self.loss_tp *= self.args.tp_mul if 'tp_mul' in self.args else 1.  # version compatibility
 
     def _initialize_cost_function(self):
         with tf.name_scope('cost'):
@@ -149,7 +151,7 @@ class ModelQRTP(object):
         MAP = e.MAP()
         MRR = e.MRR()
         P1 = e.Precision(1)
-        P5 = e.Precision(5), 4
+        P5 = e.Precision(5)
 
         outputs = np.vstack(outputs)
         predictions = np.vstack(predictions)
@@ -158,7 +160,8 @@ class ModelQRTP(object):
         tp_loss = -np.mean((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
 
         ev = TPEvaluation(outputs, predictions, targets)
-        results = [ev.lr_ap_score(), ev.lr_loss(), ev.cov_error()]
+        # results = [ev.lr_ap_score(), ev.lr_loss(), ev.cov_error()]
+        results = []
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []
         for label in range(targets.shape[1]):
@@ -176,11 +179,8 @@ class ModelQRTP(object):
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         ev = TPEvaluation(outputs, predictions, targets)
         results += [ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')]
-
-        print 'P@1 ', ev.Precision(1)
-        print 'P@5 ', ev.Precision(5)
-        print 'R@1 ', ev.Recall(1)
-        print 'R@5 ', ev.Recall(5)
+        results += [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Recall(1), ev.Recall(3), ev.Recall(5)]
+        print '\nupper bound: P@3: {} P@5: {}\n'.format(ev.upper_bound_precision(3), ev.upper_bound_precision(5))
         return MAP, MRR, P1, P5, qr_loss, tp_loss, tuple(results)
 
     def train_batch(self, batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
@@ -211,11 +211,18 @@ class ModelQRTP(object):
                 ["Epoch", "dev A P", "dev A R", "dev A F1", "dev I P", "dev I R", "dev I F1",
                  "tst A P", "tst A R", "tst A F1", "tst I P", "tst I R", "tst I F1"]
             )
+
+            result_table_tp2 = PrettyTable(
+                ["Epoch", "dev P@1", "dev P@3", "dev P@5", "dev R@1", "dev R@3", "dev R@5",
+                 "tst P@1", "tst P@3", "tst P@5", "tst R@1", "tst R@3", "tst R@5"]
+            )
+
             dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1 = 0, 0, 0, 0, 0, 0
+            dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5 = 0, 0, 0, 0, 0, 0
             test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1 = 0, 0, 0, 0, 0, 0
+            test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5 = 0, 0, 0, 0, 0, 0
 
             best_dev_performance = -1
-            worse_dev_loss = 1000000
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -267,12 +274,23 @@ class ModelQRTP(object):
             dev_mac_f1_summary = tf.summary.scalar("dev_mac_f1", dev_mac_f1)
             dev_mic_f1_summary = tf.summary.scalar("dev_mic_f1", dev_mic_f1)
 
+            dev_pat1 = tf.placeholder(tf.float32)
+            dev_pat1_summary = tf.summary.scalar("dev_pat1", dev_pat1)
+            dev_pat3 = tf.placeholder(tf.float32)
+            dev_pat3_summary = tf.summary.scalar("dev_pat3", dev_pat3)
+            dev_rat1 = tf.placeholder(tf.float32)
+            dev_rat1_summary = tf.summary.scalar("dev_rat1", dev_rat1)
+            dev_rat3 = tf.placeholder(tf.float32)
+            dev_rat3_summary = tf.summary.scalar("dev_rat3", dev_rat3)
+
             dev_summary_op = tf.summary.merge(
                 [dev_loss_qr_summary, dev_map_summary, dev_mrr_summary,
                  dev_loss_tp_summary,
                  dev_mac_p_summary, dev_mic_p_summary,
                  dev_mac_r_summary, dev_mic_r_summary,
-                 dev_mac_f1_summary, dev_mic_f1_summary]
+                 dev_mac_f1_summary, dev_mic_f1_summary,
+                 dev_pat1_summary, dev_pat3_summary, dev_rat1_summary, dev_rat3_summary
+                 ]
             )
             dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
             dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
@@ -310,12 +328,14 @@ class ModelQRTP(object):
 
                     if i == N-1:  # EVAL
                         dev_tp_loss = 0
+                        dev_qr_loss = 0
 
                         if dev:
                             dev_MAP, dev_MRR, dev_P1, dev_P5, dev_qr_loss, dev_tp_loss, (
-                                dev_LRAP, dev_LRL, dev_CE,
+                                # dev_LRAP, dev_LRL, dev_CE,
                                 (dev_MAC_P, dev_MAC_R, dev_MAC_F1),
-                                (dev_MIC_P, dev_MIC_R, dev_MIC_F1)
+                                (dev_MIC_P, dev_MIC_R, dev_MIC_F1),
+                                dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
                             ) = self.evaluate(dev, sess)
 
                             _dev_sum = sess.run(
@@ -324,15 +344,18 @@ class ModelQRTP(object):
                                  dev_loss_tp: dev_tp_loss,
                                  dev_mac_f1: dev_MAC_F1, dev_mic_f1: dev_MIC_F1,
                                  dev_mac_p: dev_MAC_P, dev_mic_p: dev_MIC_P,
-                                 dev_mac_r: dev_MAC_R, dev_mic_r: dev_MIC_R},
+                                 dev_mac_r: dev_MAC_R, dev_mic_r: dev_MIC_R,
+                                 dev_pat1: dev_PAT1, dev_pat3: dev_PAT3, dev_rat1: dev_RAT1, dev_rat3: dev_RAT3
+                                 },
                             )
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
 
                         if test:
                             test_MAP, test_MRR, test_P1, test_P5, test_qr_loss, test_tp_loss, (
-                                test_LRAP, test_LRL, test_CE,
+                                # test_LRAP, test_LRL, test_CE,
                                 (test_MAC_P, test_MAC_R, test_MAC_F1),
-                                (test_MIC_P, test_MIC_R, test_MIC_F1)
+                                (test_MIC_P, test_MIC_R, test_MIC_F1),
+                                test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5,
                             ) = self.evaluate(test, sess)
 
                         if self.args.performance == "dev_mrr" and dev_MRR > best_dev_performance:
@@ -345,17 +368,9 @@ class ModelQRTP(object):
                                 [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
                                  test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
                             )
-                            if self.args.save_dir != "":
-                                self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "dev_qr_loss" and dev_qr_loss < worse_dev_loss:
-                            unchanged = 0
-                            worse_dev_loss = dev_qr_loss
-                            result_table_qr.add_row(
-                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
-                            )
-                            result_table_tp.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
+                            result_table_tp2.add_row(
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
+                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
@@ -368,6 +383,42 @@ class ModelQRTP(object):
                             result_table_tp.add_row(
                                 [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
                                  test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
+                            )
+                            result_table_tp2.add_row(
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
+                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
+                            )
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "P@3" and dev_PAT3 > best_dev_performance:
+                            unchanged = 0
+                            best_dev_performance = dev_PAT3
+                            result_table_qr.add_row(
+                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
+                            )
+                            result_table_tp.add_row(
+                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
+                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
+                            )
+                            result_table_tp2.add_row(
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
+                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
+                            )
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "R@3" and dev_RAT3 > best_dev_performance:
+                            unchanged = 0
+                            best_dev_performance = dev_RAT3
+                            result_table_qr.add_row(
+                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
+                            )
+                            result_table_tp.add_row(
+                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
+                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
+                            )
+                            result_table_tp2.add_row(
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
+                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
@@ -385,8 +436,10 @@ class ModelQRTP(object):
                                 dev_MAC_P
                             )
                         )
+                        say("P@3 {} R@3 {}\n".format(dev_PAT3, dev_RAT3))
                         say("\n{}\n".format(result_table_qr))
                         say("\n{}\n".format(result_table_tp))
+                        say("\n{}\n".format(result_table_tp2))
 
     def save(self, sess, path, step):
         # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again

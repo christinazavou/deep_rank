@@ -4,7 +4,7 @@ import argparse
 import sys
 import numpy as np
 import pickle
-from utils import read_results_rows, read_questions, questions_index
+from utils import read_results_rows, read_questions, questions_index, read_eval_rows
 import utils
 import matplotlib.pyplot as plt
 from collections import Counter
@@ -34,21 +34,22 @@ def find_bad_queries(results, out_file):
             if pat1_ < 1 and 1 in labels:
                 MAPS.append(map_), MRRS.append(mrr_), PAT1S.append(pat1_), PAT5S.append(pat5_)
                 qids_not_found_at_once.append(q_id)
-                f.write(u'{}:\t{}\n\t\t{}\n'.format(q_id, q_idx[q_id][0], q_idx[q_id][1]).encode('utf8'))
+                f.write(u'{}:\t{}\n\t\t{}\n\t\t{}\n'.format(
+                    q_id, q_idx[q_id][0], q_idx[q_id][1], q_idx[q_id][2]).encode('utf8'))
                 f.write(u'\t\t----------------------------------------------------------------------------'
                         u'----------------------------------------------------------------------------'
                         u'\n'.encode('utf8'))
                 for q_ranked, q_label in zip(q_ids_candidates, labels):
                     if q_label == 1:
                         assert q_ranked in q_ids_similar, ' OPA =/'
-                        f.write(
-                            u'\t\t{}\n\t\t{}\n'.format(q_idx[q_ranked][0].upper(), q_idx[q_ranked][1].upper()).encode(
-                                'utf8'))
+                        f.write(u'\t\t{}\n\t\t{}\n\t\t{}\n'.format(
+                            q_idx[q_ranked][0].upper(), q_idx[q_ranked][1].upper(), str(q_idx[q_ranked][2]).upper()
+                        ).encode('utf8'))
                     else:
                         assert q_ranked not in q_ids_similar, ' OPA =\\'
-                        f.write(
-                            u'\t\t{}\n\t\t{}\n'.format(q_idx[q_ranked][0].lower(), q_idx[q_ranked][1].lower()).encode(
-                                'utf8'))
+                        f.write(u'\t\t{}\n\t\t{}\n\t\t{}\n'.format(
+                            q_idx[q_ranked][0].lower(), q_idx[q_ranked][1].lower(), str(q_idx[q_ranked][2]).lower()
+                        ).encode('utf8'))
                 f.write(u'------------------------------------------------------------------------------------------'
                         u'-------------------------------------------------------------------------------------------'
                         u'\n'.encode('utf8'))
@@ -67,21 +68,21 @@ def find_best_queries(results, out_file):
             if pat5_ > 0.45 and labels.count(1) > 5:
                 MAPS.append(map_), MRRS.append(mrr_), PAT1S.append(pat1_), PAT5S.append(pat5_)
                 qids_ranked_well.append(q_id)
-                f.write(u'{}:\t{}\n\t\t{}\n'.format(q_id, q_idx[q_id][0], q_idx[q_id][1]).encode('utf8'))
+                f.write(u'{}:\t{}\n\t\t{}\n\t\t{}\n'.format(q_id, q_idx[q_id][0], q_idx[q_id][1], q_idx[q_id][2]).encode('utf8'))
                 f.write(u'\t\t----------------------------------------------------------------------------'
                         u'----------------------------------------------------------------------------'
                         u'\n'.encode('utf8'))
                 for q_ranked, q_label in zip(q_ids_candidates, labels):
                     if q_label == 1:
                         assert q_ranked in q_ids_similar, ' OPA =/'
-                        f.write(
-                            u'\t\t{}\n\t\t{}\n'.format(q_idx[q_ranked][0].upper(), q_idx[q_ranked][1].upper()).encode(
-                                'utf8'))
+                        f.write(u'\t\t{}\n\t\t{}\n\t\t{}\n'.format(
+                            q_idx[q_ranked][0].upper(), q_idx[q_ranked][1].upper(), str(q_idx[q_ranked][2]).upper()
+                        ).encode('utf8'))
                     else:
                         assert q_ranked not in q_ids_similar, ' OPA =\\'
-                        f.write(
-                            u'\t\t{}\n\t\t{}\n'.format(q_idx[q_ranked][0].lower(), q_idx[q_ranked][1].lower()).encode(
-                                'utf8'))
+                        f.write(u'\t\t{}\n\t\t{}\n\t\t{}\n'.format(
+                            q_idx[q_ranked][0].lower(), q_idx[q_ranked][1].lower(), str(q_idx[q_ranked][2]).lower()
+                        ).encode('utf8'))
                 f.write(u'------------------------------------------------------------------------------------------'
                         u'-------------------------------------------------------------------------------------------'
                         u'\n'.encode('utf8'))
@@ -98,21 +99,21 @@ def analyze_given_queries(results, qids_to_check, special_cases_file):
         for q_id, q_ids_similar, q_ids_candidates, scores, labels, map_, mrr_, pat1_, pat5_ in results:
             if q_id in qids_to_check:
                 MAPS.append(map_), MRRS.append(mrr_), PAT1S.append(pat1_), PAT5S.append(pat5_)
-                f.write(u'{}:\t{}\n\t\t{}\n'.format(q_id, q_idx[q_id][0], q_idx[q_id][1]).encode('utf8'))
+                f.write(u'{}:\t{}\n\t\t{}\n\t\t{}\n'.format(q_id, q_idx[q_id][0], q_idx[q_id][1], q_idx[q_id][2]).encode('utf8'))
                 f.write(u'\t\t----------------------------------------------------------------------------'
                         u'----------------------------------------------------------------------------'
                         u'\n'.encode('utf8'))
                 for q_ranked, q_label in zip(q_ids_candidates, labels):
                     if q_label == 1:
                         assert q_ranked in q_ids_similar, ' OPA =/'
-                        f.write(
-                            u'\t\t{}\n\t\t{}\n'.format(q_idx[q_ranked][0].upper(), q_idx[q_ranked][1].upper()).encode(
-                                'utf8'))
+                        f.write(u'\t\t{}\n\t\t{}\n\t\t{}\n'.format(
+                            q_idx[q_ranked][0].upper(), q_idx[q_ranked][1].upper(), str(q_idx[q_ranked][2]).upper()
+                        ).encode('utf8'))
                     else:
                         assert q_ranked not in q_ids_similar, ' OPA =\\'
-                        f.write(
-                            u'\t\t{}\n\t\t{}\n'.format(q_idx[q_ranked][0].lower(), q_idx[q_ranked][1].lower()).encode(
-                                'utf8'))
+                        f.write(u'\t\t{}\n\t\t{}\n\t\t{}\n'.format(
+                            q_idx[q_ranked][0].lower(), q_idx[q_ranked][1].lower(), str(q_idx[q_ranked][2]).lower()
+                        ).encode('utf8'))
                 f.write(u'------------------------------------------------------------------------------------------'
                         u'-------------------------------------------------------------------------------------------'
                         u'\n'.encode('utf8'))
@@ -121,7 +122,6 @@ def analyze_given_queries(results, qids_to_check, special_cases_file):
 
 
 def good_vs_bad_statistics(results):
-    assert isinstance(q_idx.values()[0], tuple) and len(q_idx.values()[0]) == 2,  q_idx.values()[0]
     q_indicators = ["what", "when", "where", "why", "how", "who"]
     bad_words_difference, best_words_difference = [], []
     bad_q_indicators_difference, best_q_indicators_difference = [], []
@@ -179,8 +179,44 @@ def good_vs_bad_statistics(results):
     print 'bad tags: ', bad_tags, '\n'
     print 'best tags: ', best_tags, '\n'
 
+
+def good_vs_bad_statistics2(results):
+    q_indicators = ["what", "when", "where", "why", "how", "who"]
+    bad_words_counts, best_words_counts = [], []
+    bad_q_indicators_counts, best_q_indicators_counts = [], []
+    bad_tags_counts, best_tags_counts = [], []
+    bad_tags, best_tags = Counter(), Counter()
+    bad_q_indicators, best_q_indicators = Counter(), Counter()
+    for q_id, q_ids_similar, q_ids_candidates, scores, labels, map_, mrr_, pat1_, pat5_ in results:
+        if pat1_ < 1 and 1 in labels:
+            query, q_tags = q_idx[q_id]
+            query_indicators = [q_ind for q_ind in q_indicators if q_ind in query.split(' ')]
+            bad_tags += Counter(q_tags)
+            bad_words_counts.append(len(query.split(' ')))
+            bad_q_indicators_counts.append(len(query_indicators))
+            bad_tags_counts.append(len(q_tags))
+            bad_q_indicators += Counter(query_indicators)
+        if pat5_ > 0.54 and labels.count(1) > 5:
+            query, q_tags = q_idx[q_id]
+            query_indicators = [q_ind for q_ind in q_indicators if q_ind in query.split(' ')]
+            best_tags += Counter(q_tags)
+            best_words_counts.append(len(query.split(' ')))
+            best_q_indicators_counts.append(len(query_indicators))
+            best_tags_counts.append(len(q_tags))
+            best_q_indicators += Counter(query_indicators)
+
+    print 'bad words counts mean, std = ', np.mean(np.array(bad_words_counts)), np.std(np.array(bad_words_counts))
+    print 'best words counts mean, std = ', np.mean(np.array(best_words_counts)), np.std(np.array(best_words_counts))
+    print 'bad q indicators counts mean, std = ', np.mean(np.array(bad_q_indicators_counts)), np.std(np.array(bad_q_indicators_counts))
+    print 'best q indicators counts mean, std = ', np.mean(np.array(best_q_indicators_counts)), np.std(np.array(best_q_indicators_counts))
+    print 'bad tags counts mean, std = ', np.mean(np.array(bad_tags_counts)), np.std(np.array(bad_tags_counts))
+    print 'best tags counts mean, std = ', np.mean(np.array(best_tags_counts)), np.std(np.array(best_tags_counts))
+    print 'bad q indicators = ', bad_q_indicators
+    print 'best q indicators = ', best_q_indicators
+    print 'bad tags: ', bad_tags, '\n'
+    print 'best tags: ', best_tags, '\n'
+
 argparser = argparse.ArgumentParser(sys.argv[0])
-argparser.add_argument("--corpus", type=str, default="")
 argparser.add_argument("--corpus_w_tags", type=str, default="")
 argparser.add_argument("--results", type=str, default="")
 argparser.add_argument("--bad_cases", type=str, default="")
@@ -191,8 +227,8 @@ argparser.add_argument("--analyzed_ids", type=str, default="")
 args = argparser.parse_args()
 
 
-Q = list(read_questions(args.corpus))
-q_idx = questions_index(Q, True)
+Q = list(utils.read_questions_with_tags(args.corpus_w_tags))
+q_idx = utils.questions_index_with_tags(Q, True)
 R = list(read_results_rows(args.results))
 
 print_scores(R)
@@ -209,9 +245,6 @@ if args.given_ids:
     ids_to_check = pickle.load(open(args.read_ids, 'rb'))
     analyze_given_queries(R, ids_to_check, args.analyzed_ids)
 
-if args.corpus_w_tags:
-    Q = list(utils.read_questions_with_tags(args.corpus_w_tags))
-    q_idx = utils.questions_index_with_tags(Q, False)
-    good_vs_bad_statistics(R)
-
-
+q_idx = utils.questions_index_with_tags(Q, False)
+# good_vs_bad_statistics(R)
+good_vs_bad_statistics2(R)

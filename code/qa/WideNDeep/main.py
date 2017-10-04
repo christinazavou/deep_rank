@@ -3,7 +3,7 @@ import os
 import sys
 import time
 
-from qa.WideNDeep.main_model import Model
+from qa.WideNDeep.model import Model
 from qa.WideNDeep.myio import read_eval_annotations, read_train_annotations, create_eval_batches, \
     create_train_batches
 from qa.myio import create_embedding_layer, map_corpus

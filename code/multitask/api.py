@@ -110,22 +110,20 @@ class QRTPAPI:
         print 'MACRO: ', ev.precision_recall_fscore('macro')
         print 'MICRO: ', ev.precision_recall_fscore('micro')
 
-        print 'P@1 ', ev.Precision(1)
-        print 'P@5 ', ev.Precision(5)
-        print 'R@1 ', ev.Recall(1)
-        print 'R@5 ', ev.Recall(5)
+        print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\n'.format(ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10))
+        print 'R@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10))
 
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
     # all arguments are MUST
-    argparser.add_argument("--model", type=str)
     argparser.add_argument("--corpus", type=str, default="")  # texts_raw_fixed file
     argparser.add_argument("--corpus_w_tags", type=str, default="")  # texts_raw_fixed_with_tags file
     argparser.add_argument("--embeddings", type=str, default="")  # embeddings file
-    argparser.add_argument("--tags_file", type=str, default="")
     argparser.add_argument("--dev", type=str, default="")
     argparser.add_argument("--test", type=str, default="")
+    argparser.add_argument("--tags_file", type=str, default="")
+    argparser.add_argument("--model", type=str)
     argparser.add_argument("--layer", type=str, default="lstm")
     args = argparser.parse_args()
     print '\n', args, '\n'

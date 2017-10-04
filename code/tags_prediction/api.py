@@ -83,24 +83,22 @@ class TPAPI:
         """------------------------------------------remove ill evaluation-------------------------------------------"""
 
         ev = Evaluation(outputs, predictions, targets)
-        print 'MACRO : ', ev.precision_recall_fscore('macro')
-        print 'MICRO : ', ev.precision_recall_fscore('micro')
-
-        print 'P@1 : ', ev.Precision(1)
-        print 'P@5 : ', ev.Precision(5)
-        print 'R@1 : ', ev.Recall(1)
-        print 'R@5 : ', ev.Recall(5)
+        print 'MACRO PRECISION RECALL F1: ', ev.precision_recall_fscore(average='macro')
+        print 'MICRO PRECISION RECALL F1: ', ev.precision_recall_fscore(average='micro')
+        print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(
+            ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
+            ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10))
 
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
     argparser.add_argument("--corpus_w_tags", type=str, default="")
-    argparser.add_argument("--model", type=str)
     argparser.add_argument("--embeddings", type=str, default="")
-    argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--df_corpus", type=str, default="")
-    argparser.add_argument("--max_seq_len", type=int, default=100)
     argparser.add_argument("--tags_file", type=str, default="")
+    argparser.add_argument("--model", type=str)
+    argparser.add_argument("--layer", type=str, default="lstm")
+    argparser.add_argument("--max_seq_len", type=int, default=100)
 
     args = argparser.parse_args()
     print '\n', args, '\n'

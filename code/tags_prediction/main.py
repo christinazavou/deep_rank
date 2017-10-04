@@ -156,7 +156,7 @@ if __name__ == '__main__':
     argparser.add_argument("--concat", type=int, default=0)
 
     argparser.add_argument("--threshold", type=float, default=0.5)
-    argparser.add_argument("--performance", type=str, default="f1_micro")
+    argparser.add_argument("--performance", type=str, default="f1_micro")  # f1_micro p_macro, P@3, R@3
 
     argparser.add_argument("--load_trained_vars", type=str, default="")
     argparser.add_argument("--load_pre_trained_part", type=str, default="")

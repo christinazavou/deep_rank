@@ -122,14 +122,12 @@ def evaluate(test_x, test_y, labels, model):
     # precision, recall, f1, support = precision_recall_fscore_support(test_y, predictions)
     # results = pd.DataFrame({'tag/label': labels, 'precision': precision, 'recall': recall, 'f1': f1, 'support': support})
     # print results.head(len(labels))
-    print 'MACRO PRECISION RECALL F1: ', precision_recall_fscore_support(test_y, predictions, average='macro')
-    print 'MICRO PRECISION RECALL F1: ', precision_recall_fscore_support(test_y, predictions, average='micro')
 
     ev = Evaluation(y_scores, predictions, test_y)
-    print 'P@1 ', ev.Precision(1)
-    print 'P@5 ', ev.Precision(5)
-    print 'R@1 ', ev.Recall(1)
-    print 'R@1 ', ev.Recall(5)
+    print 'MACRO PRECISION RECALL F1: ', ev.precision_recall_fscore(average='macro')
+    print 'MICRO PRECISION RECALL F1: ', ev.precision_recall_fscore(average='micro')
+    print 'P@1: {}\tP@3: {}\tP@5: {}\tR@1: {}\tR@3: {}\tR@5: {}\n'.format(
+        ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Recall(1), ev.Recall(3), ev.Recall(5))
 
 
 def get_data(df, type_name, labels):

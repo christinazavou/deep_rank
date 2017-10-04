@@ -103,7 +103,8 @@ class ModelMultiTagsClassifier(object):
         loss = -np.mean((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
 
         ev = Evaluation(outputs, predictions, targets)
-        results = [ev.lr_ap_score(), ev.lr_loss(), ev.cov_error()]
+        # results = [ev.lr_ap_score(), ev.lr_loss(), ev.cov_error()]
+        results = []
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []
@@ -123,11 +124,8 @@ class ModelMultiTagsClassifier(object):
 
         ev = Evaluation(outputs, predictions, targets)
         results += [ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')]
-
-        print 'P@1 ', ev.Precision(1)
-        print 'P@5 ', ev.Precision(5)
-        print 'R@1 ', ev.Recall(1)
-        print 'R@5 ', ev.Recall(5)
+        results += [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Recall(1), ev.Recall(3), ev.Recall(5)]
+        print '\nupper boud: P@3: {} P@5: {}\n'.format(ev.upper_bound_precision(3), ev.upper_bound_precision(5))
         return loss, tuple(results)
 
     def train_batch(self, titles, bodies, y_batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
@@ -151,16 +149,22 @@ class ModelMultiTagsClassifier(object):
                  "tst A P", "tst A R", "tst A F1", "tst I P", "tst I R", "tst I F1"]
             )
 
+            # result_table2 = PrettyTable(
+            #     ["Epoch", "dev Lab.Rank.Av.Pre.", "dev Lab.Rank.Loss", "dev Cov.Error",
+            #      "tst Lab.Rank.Av.Pre.", "tst Lab.Rank.Loss", "tst Cov.Error"]
+            # )
             result_table2 = PrettyTable(
-                ["Epoch", "dev Lab.Rank.Av.Pre.", "dev Lab.Rank.Loss", "dev Cov.Error",
-                 "tst Lab.Rank.Av.Pre.", "tst Lab.Rank.Loss", "tst Cov.Error"]
+                ["Epoch", "dev P@1", "dev P@3", "dev P@5", "dev R@1", "dev R@3", "dev R@5",
+                 "tst P@1", "tst P@3", "tst P@5", "tst R@1", "tst R@3", "tst R@5"]
             )
 
             dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1 = 0, 0, 0, 0, 0, 0
             test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1 = 0, 0, 0, 0, 0, 0
 
-            dev_LRAP, dev_LRL, dev_CE = 0, 0, 0
-            test_LRAP, test_LRL, test_CE = 0, 0, 0
+            # dev_LRAP, dev_LRL, dev_CE = 0, 0, 0
+            # test_LRAP, test_LRL, test_CE = 0, 0, 0
+            dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5 = 0, 0, 0, 0, 0, 0
+            test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5 = 0, 0, 0, 0, 0, 0
 
             best_dev_performance = -1
 
@@ -202,37 +206,20 @@ class ModelMultiTagsClassifier(object):
                 dev_mac_f1_summary = tf.summary.scalar("dev_mac_f1", dev_mac_f1)
                 dev_mic_f1_summary = tf.summary.scalar("dev_mic_f1", dev_mic_f1)
 
+                dev_pat3 = tf.placeholder(tf.float32)
+                dev_rat3 = tf.placeholder(tf.float32)
+                dev_pat3_summary = tf.summary.scalar("dev_pat3", dev_pat3)
+                dev_rat3_summary = tf.summary.scalar("dev_rat3", dev_rat3)
+
                 dev_summary_op = tf.summary.merge(
                     [dev_mac_p_summary, dev_mic_p_summary,
                      dev_mac_r_summary, dev_mic_r_summary,
-                     dev_mac_f1_summary, dev_mic_f1_summary]
+                     dev_mac_f1_summary, dev_mic_f1_summary,
+                     dev_pat3_summary, dev_rat3_summary
+                     ]
                 )
                 dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
                 dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
-            if test:
-                # Test Summaries
-                test_mac_p = tf.placeholder(tf.float32)
-                test_mic_p = tf.placeholder(tf.float32)
-                test_mac_p_summary = tf.summary.scalar("test_mac_p", test_mac_p)
-                test_mic_p_summary = tf.summary.scalar("test_mic_p", test_mic_p)
-
-                test_mac_r = tf.placeholder(tf.float32)
-                test_mic_r = tf.placeholder(tf.float32)
-                test_mac_r_summary = tf.summary.scalar("test_mac_r", test_mac_r)
-                test_mic_r_summary = tf.summary.scalar("test_mic_r", test_mic_r)
-
-                test_mac_f1 = tf.placeholder(tf.float32)
-                test_mic_f1 = tf.placeholder(tf.float32)
-                test_mac_f1_summary = tf.summary.scalar("test_mac_f1", test_mac_f1)
-                test_mic_f1_summary = tf.summary.scalar("test_mic_f1", test_mic_f1)
-
-                test_summary_op = tf.summary.merge(
-                    [test_mac_p_summary, test_mic_p_summary,
-                     test_mac_r_summary, test_mic_r_summary,
-                     test_mac_f1_summary, test_mic_f1_summary]
-                )
-                test_summary_dir = os.path.join(self.args.save_dir, "summaries", "test")
-                test_summary_writer = tf.summary.FileWriter(test_summary_dir, sess.graph)
 
             if self.args.save_dir != "":
                 checkpoint_dir = os.path.join(self.args.save_dir, "checkpoints")
@@ -270,31 +257,28 @@ class ModelMultiTagsClassifier(object):
 
                         if dev:
                             dev_loss, (
-                                dev_LRAP, dev_LRL, dev_CE,
+                                # dev_LRAP, dev_LRL, dev_CE,
                                 (dev_MAC_P, dev_MAC_R, dev_MAC_F1),
-                                (dev_MIC_P, dev_MIC_R, dev_MIC_F1)
+                                (dev_MIC_P, dev_MIC_R, dev_MIC_F1),
+                                dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5
                             ) = self.evaluate(dev, sess)
                             _dev_sum = sess.run(
                                 dev_summary_op,
                                 {dev_mac_f1: dev_MAC_F1, dev_mic_f1: dev_MIC_F1,
                                  dev_mac_p: dev_MAC_P, dev_mic_p: dev_MIC_P,
-                                 dev_mac_r: dev_MAC_R, dev_mic_r: dev_MIC_R}
+                                 dev_mac_r: dev_MAC_R, dev_mic_r: dev_MIC_R,
+                                 dev_pat3: dev_PAT3, dev_rat3: dev_RAT3
+                                 }
                             )
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
 
                         if test:
                             test_loss, (
-                                test_LRAP, test_LRL, test_CE,
+                                # test_LRAP, test_LRL, test_CE,
                                 (test_MAC_P, test_MAC_R, test_MAC_F1),
-                                (test_MIC_P, test_MIC_R, test_MIC_F1)
+                                (test_MIC_P, test_MIC_R, test_MIC_F1),
+                                test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5
                             ) = self.evaluate(test, sess)
-                            _test_sum = sess.run(
-                                test_summary_op,
-                                {test_mac_f1: test_MAC_F1, test_mic_f1: test_MIC_F1,
-                                 test_mac_p: test_MAC_P, test_mic_p: test_MIC_P,
-                                 test_mac_r: test_MAC_R, test_mic_r: test_MIC_R}
-                            )
-                            test_summary_writer.add_summary(_test_sum, cur_step)
 
                         if self.args.performance == "f1_micro" and dev_MIC_F1 > best_dev_performance:
                             unchanged = 0
@@ -303,20 +287,12 @@ class ModelMultiTagsClassifier(object):
                                 [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
                                  test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
                             )
+                            # result_table2.add_row(
+                            #     [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
+                            # )
                             result_table2.add_row(
-                                [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
-                            )
-                            if self.args.save_dir != "":
-                                self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "p_micro" and dev_MIC_P > best_dev_performance:
-                            unchanged = 0
-                            best_dev_performance = dev_MIC_P
-                            result_table.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-                            result_table2.add_row(
-                                [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
+                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
@@ -327,8 +303,44 @@ class ModelMultiTagsClassifier(object):
                                 [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
                                  test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
                             )
+                            # result_table2.add_row(
+                            #     [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
+                            # )
                             result_table2.add_row(
-                                [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
+                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
+                            )
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "P@3" and dev_PAT3 > best_dev_performance:
+                            unchanged = 0
+                            best_dev_performance = dev_PAT3
+                            result_table.add_row(
+                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
+                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
+                            )
+                            # result_table2.add_row(
+                            #     [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
+                            # )
+                            result_table2.add_row(
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
+                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
+                            )
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "R@3" and dev_RAT3 > best_dev_performance:
+                            unchanged = 0
+                            best_dev_performance = dev_RAT3
+                            result_table.add_row(
+                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
+                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
+                            )
+                            # result_table2.add_row(
+                            #     [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
+                            # )
+                            result_table2.add_row(
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
+                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
@@ -341,6 +353,7 @@ class ModelMultiTagsClassifier(object):
                             dev_MIC_P,
                             best_dev_performance
                         ))
+                        myio.say("P@3 {} R@3 {}".format(dev_PAT3, dev_RAT3))
                         myio.say("\n{}\n".format(result_table))
                         myio.say("\n{}\n".format(result_table2))
 
