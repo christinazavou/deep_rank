@@ -49,26 +49,6 @@ def map_corpus(raw_corpus, embedding_layer, max_len=100):
     return ids_corpus
 
 
-def create_embedding_layer(raw_corpus, n_d, embs=None, cut_off=2,
-                           unk="<unk>", padding="<padding>", fix_init_embs=True):
-
-    cnt = Counter(w for id, pair in raw_corpus.iteritems() for x in pair for w in x)
-    cnt[unk] = cut_off + 1
-    cnt[padding] = cut_off + 1
-    embedding_layer = EmbeddingLayer(
-            n_d=n_d,
-            # vocab=(w for w,c in cnt.iteritems() if c > cut_off),
-            vocab=[unk, padding],
-            embs=embs,
-            fix_init_embs=fix_init_embs
-        )
-    # print embedding_layer.oov_id
-    # print embedding_layer.vocab_map.keys()[0:5]
-    # print embedding_layer.embeddings
-    # print embedding_layer.embeddings_trainable
-    return embedding_layer
-
-
 def create_idf_weights(corpus_path, embedding_layer):
     vectorizer = TfidfVectorizer(min_df=1, ngram_range=(1, 1), binary=False)
 

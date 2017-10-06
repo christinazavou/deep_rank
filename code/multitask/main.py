@@ -5,18 +5,16 @@ import time
 import os
 import pickle
 from tags_prediction import myio as tpio
-from tags_prediction.statistics import read_df
-from utils import load_embedding_iterator
+from utils import load_embedding_iterator, create_embedding_layer
 import myio
 
 
 def main():
     raw_corpus = qaio.read_corpus(args.corpus)
-    embedding_layer = qaio.create_embedding_layer(
-        raw_corpus,
-        n_d=args.hidden_dim,
-        cut_off=args.cut_off,
-        embs=load_embedding_iterator(args.embeddings) if args.embeddings else None
+    embedding_layer = create_embedding_layer(
+        n_d=240,
+        embs=load_embedding_iterator(args.embeddings),
+        emb_words=False if args.use_embeddings else None
     )
     print("vocab size={}, corpus size={}\n".format(embedding_layer.n_V, len(raw_corpus)))
     if args.reweight:
@@ -83,13 +81,14 @@ if __name__ == "__main__":
 
     argparser.add_argument("--corpus_w_tags", type=str)
     argparser.add_argument("--tags_file", type=str)
+    argparser.add_argument("--embeddings", type=str, default="")
 
     argparser.add_argument("--corpus", type=str)
     argparser.add_argument("--train", type=str, default="")
     argparser.add_argument("--test", type=str, default="")
     argparser.add_argument("--dev", type=str, default="")
 
-    argparser.add_argument("--embeddings", type=str, default="")
+    argparser.add_argument("--use_embeddings", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)

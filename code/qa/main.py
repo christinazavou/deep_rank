@@ -1,19 +1,18 @@
 import argparse
 import myio
 import sys
-from utils import load_embedding_iterator
+from utils import load_embedding_iterator, create_embedding_layer
 import time
 import os
 
 
 def main():
     raw_corpus = myio.read_corpus(args.corpus)
-    embedding_layer = myio.create_embedding_layer(
-                raw_corpus,
+    embedding_layer = create_embedding_layer(
                 n_d=args.hidden_dim,
-                cut_off=args.cut_off,
-                embs=load_embedding_iterator(args.embeddings) if args.embeddings else None
-            )
+                embs=load_embedding_iterator(args.embeddings),
+                emb_words=False if args.use_embeddings else None
+    )
     ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, max_len=args.max_seq_len)
     print("vocab size={}, corpus size={}\n".format(
             embedding_layer.n_V,
@@ -80,8 +79,9 @@ if __name__ == "__main__":
     argparser.add_argument("--train", type=str, default="")
     argparser.add_argument("--test", type=str, default="")
     argparser.add_argument("--dev", type=str, default="")
-
     argparser.add_argument("--embeddings", type=str, default="")
+
+    argparser.add_argument("--use_embeddings", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)

@@ -41,6 +41,13 @@ class ModelMultiTagsClassifier(object):
         l2 = tf.norm(x, ord=2, axis=2, keep_dims=True)
         return x / (l2 + eps)
 
+    def get_pnorm_stat(self, session):
+        dict_norms = {}
+        for param_name, param in self.params.iteritems():
+            l2 = session.run(tf.norm(param))
+            dict_norms[param_name] = round(l2, 3)
+        return dict_norms
+
     def _initialize_output_graph(self):
 
         with tf.name_scope('outputs'):
@@ -52,21 +59,23 @@ class ModelMultiTagsClassifier(object):
                 )
                 self.b_o = tf.Variable(tf.zeros([self.output_dim]), name='bias_out')
 
-            out = tf.matmul(self.h_final, self.w_o) + self.b_o
-            self.output = tf.nn.sigmoid(out)
+            output = tf.matmul(self.h_final, self.w_o) + self.b_o
+            self.act_output = tf.nn.sigmoid(output)
 
             # for evaluation
             self.prediction = tf.where(
-                self.output > self.args.threshold, tf.ones_like(self.output), tf.zeros_like(self.output)
+                self.act_output > self.args.threshold, tf.ones_like(self.act_output), tf.zeros_like(self.act_output)
             )
 
             with tf.name_scope('cost'):
                 with tf.name_scope('loss'):
-                    self.loss = -tf.reduce_mean(
-                        (self.target * tf.log(self.output + 1e-9)) + (
-                            (1 - self.target) * tf.log(1 - self.output + 1e-9)),
-                        name='cross_entropy'
-                    )
+
+                    x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
+                    self.loss = tf.reduce_mean(x_entropy, name='cross_entropy')
+
+                    _mask = tf.expand_dims(tf.cast(tf.greater(tf.reduce_sum(self.target, 0), 0), tf.float32), 1)
+                    _aux_loss = tf.reduce_mean(tf.matmul(x_entropy, _mask))
+                    self._aux_loss = _aux_loss
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -74,11 +83,14 @@ class ModelMultiTagsClassifier(object):
                         l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
                     self.l2_reg = l2_reg
 
-                self.cost = self.loss + self.l2_reg
+                if self.args.loss == 'subset':
+                    self.cost = self._aux_loss + self.l2_reg
+                else:
+                    self.cost = self.loss + self.l2_reg
 
     def eval_batch(self, titles, bodies, sess):
         outputs, predictions = sess.run(
-            [self.output, self.prediction],
+            [self.act_output, self.prediction],
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
@@ -100,11 +112,12 @@ class ModelMultiTagsClassifier(object):
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
-        loss = -np.mean((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
+        x_entropy = (targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9))
+        loss = -np.mean(x_entropy)
 
-        ev = Evaluation(outputs, predictions, targets)
-        # results = [ev.lr_ap_score(), ev.lr_loss(), ev.cov_error()]
-        results = []
+        _mask = np.expand_dims((np.sum(targets, 0) > 0).astype(np.float32), 1)
+        _aux_loss = np.mean(np.matmul(x_entropy, _mask))
+        _loss_aux = _aux_loss
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []
@@ -123,14 +136,13 @@ class ModelMultiTagsClassifier(object):
         """------------------------------------------remove ill evaluation-------------------------------------------"""
 
         ev = Evaluation(outputs, predictions, targets)
-        results += [ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')]
-        results += [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Recall(1), ev.Recall(3), ev.Recall(5)]
-        print '\nupper boud: P@3: {} P@5: {}\n'.format(ev.upper_bound_precision(3), ev.upper_bound_precision(5))
-        return loss, tuple(results)
+        results = [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
+                   ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10)]
+        return loss, _loss_aux, tuple(results)
 
     def train_batch(self, titles, bodies, y_batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
-        _, _step, _loss, _cost, _summary = sess.run(
-            [train_op, global_step, self.loss, self.cost, train_summary_op],
+        _, _step, _loss, _aux_loss, _cost, _summary = sess.run(
+            [train_op, global_step, self.loss, self._aux_loss, self.cost, train_summary_op],
             feed_dict={
                 self.target: y_batch,
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
@@ -139,38 +151,29 @@ class ModelMultiTagsClassifier(object):
             }
         )
         train_summary_writer.add_summary(_summary, _step)
-        return _step, _loss, _cost
+        return _step, _loss, _aux_loss, _cost
 
     def train_model(self, train_batches, dev=None, test=None, assign_ops=None):
         with tf.Session() as sess:
 
             result_table = PrettyTable(
-                ["Epoch", "dev A P", "dev A R", "dev A F1", "dev I P", "dev I R", "dev I F1",
-                 "tst A P", "tst A R", "tst A F1", "tst I P", "tst I R", "tst I F1"]
+                ["Epoch", "dev P@1", "dev P@3", "dev P@5", "dev P@10", "dev R@1", "dev R@3", "dev R@5", "dev R@10",
+                 "tst P@1", "tst P@3", "tst P@5", "tst P@10", "tst R@1", "tst R@3", "tst R@5", "tst R@10"]
             )
 
-            # result_table2 = PrettyTable(
-            #     ["Epoch", "dev Lab.Rank.Av.Pre.", "dev Lab.Rank.Loss", "dev Cov.Error",
-            #      "tst Lab.Rank.Av.Pre.", "tst Lab.Rank.Loss", "tst Cov.Error"]
-            # )
-            result_table2 = PrettyTable(
-                ["Epoch", "dev P@1", "dev P@3", "dev P@5", "dev R@1", "dev R@3", "dev R@5",
-                 "tst P@1", "tst P@3", "tst P@5", "tst R@1", "tst R@3", "tst R@5"]
-            )
-
-            dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1 = 0, 0, 0, 0, 0, 0
-            test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1 = 0, 0, 0, 0, 0, 0
-
-            # dev_LRAP, dev_LRL, dev_CE = 0, 0, 0
-            # test_LRAP, test_LRL, test_CE = 0, 0, 0
-            dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5 = 0, 0, 0, 0, 0, 0
-            test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5 = 0, 0, 0, 0, 0, 0
+            dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10 = 0, 0, 0, 0, 0, 0, 0, 0
+            test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10 = 0, 0, 0, 0, 0, 0, 0, 0
 
             best_dev_performance = -1
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
-            optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
+            if self.args.optimizer == "adam":
+                optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
+            elif self.args.optimizer == "adagrad":
+                optimizer = tf.train.AdagradOptimizer(self.args.learning_rate)
+            else:
+                optimizer = tf.train.GradientDescentOptimizer(self.args.learning_rate)
             grads_and_vars = optimizer.compute_gradients(self.cost)
             train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
@@ -185,38 +188,34 @@ class ModelMultiTagsClassifier(object):
             # Train Summaries
             loss_summary = tf.summary.scalar("loss", self.loss)
             cost_summary = tf.summary.scalar("cost", self.cost)
-            train_summary_op = tf.summary.merge([loss_summary, cost_summary])
+            aux_loss_summary = tf.summary.scalar("aux_loss", self._aux_loss)
+            train_summary_op = tf.summary.merge([loss_summary, cost_summary, aux_loss_summary])
             train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
+            p_norm_summaries = {}
+            p_norm_placeholders = {}
+            for param_name, param_norm in self.get_pnorm_stat(sess).iteritems():
+                p_norm_placeholders[param_name] = tf.placeholder(tf.float32)
+                p_norm_summaries[param_name] = tf.summary.scalar(param_name, p_norm_placeholders[param_name])
+            p_norm_summary_op = tf.summary.merge(p_norm_summaries.values())
+            p_norm_summary_dir = os.path.join(self.args.save_dir, "summaries", "p_norm")
+            p_norm_summary_writer = tf.summary.FileWriter(p_norm_summary_dir, sess.graph)
+
             if dev:
                 # Dev Summaries
-                dev_mac_p = tf.placeholder(tf.float32)
-                dev_mic_p = tf.placeholder(tf.float32)
-                dev_mac_p_summary = tf.summary.scalar("dev_mac_p", dev_mac_p)
-                dev_mic_p_summary = tf.summary.scalar("dev_mic_p", dev_mic_p)
+                dev_pat5 = tf.placeholder(tf.float32)
+                dev_rat5 = tf.placeholder(tf.float32)
+                dev_pat5_summary = tf.summary.scalar("dev_pat5", dev_pat5)
+                dev_rat5_summary = tf.summary.scalar("dev_rat5", dev_rat5)
 
-                dev_mac_r = tf.placeholder(tf.float32)
-                dev_mic_r = tf.placeholder(tf.float32)
-                dev_mac_r_summary = tf.summary.scalar("dev_mac_r", dev_mac_r)
-                dev_mic_r_summary = tf.summary.scalar("dev_mic_r", dev_mic_r)
-
-                dev_mac_f1 = tf.placeholder(tf.float32)
-                dev_mic_f1 = tf.placeholder(tf.float32)
-                dev_mac_f1_summary = tf.summary.scalar("dev_mac_f1", dev_mac_f1)
-                dev_mic_f1_summary = tf.summary.scalar("dev_mic_f1", dev_mic_f1)
-
-                dev_pat3 = tf.placeholder(tf.float32)
-                dev_rat3 = tf.placeholder(tf.float32)
-                dev_pat3_summary = tf.summary.scalar("dev_pat3", dev_pat3)
-                dev_rat3_summary = tf.summary.scalar("dev_rat3", dev_rat3)
+                dev_pat10 = tf.placeholder(tf.float32)
+                dev_rat10 = tf.placeholder(tf.float32)
+                dev_pat10_summary = tf.summary.scalar("dev_pat10", dev_pat10)
+                dev_rat10_summary = tf.summary.scalar("dev_rat10", dev_rat10)
 
                 dev_summary_op = tf.summary.merge(
-                    [dev_mac_p_summary, dev_mic_p_summary,
-                     dev_mac_r_summary, dev_mic_r_summary,
-                     dev_mac_f1_summary, dev_mic_f1_summary,
-                     dev_pat3_summary, dev_rat3_summary
-                     ]
+                    [dev_pat5_summary, dev_rat5_summary, dev_pat10_summary, dev_rat10_summary]
                 )
                 dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
                 dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
@@ -238,109 +237,66 @@ class ModelMultiTagsClassifier(object):
 
                 train_loss = 0.0
                 train_cost = 0.0
+                train_aux_loss = 0.0
 
                 for i in xrange(N):
                     titles_b, bodies_b, tag_labels_b = train_batches[i]
-                    cur_step, cur_loss, cur_cost = self.train_batch(
+                    if i % 10 == 0 and self.args.testing:
+                        print 'labels in batch: ', np.sum(np.sum(tag_labels_b, 0) > 0)
+
+                    cur_step, cur_loss, cur_aux_loss, cur_cost = self.train_batch(
                         titles_b, bodies_b, tag_labels_b,
                         train_op, global_step, train_summary_op, train_summary_writer, sess
                     )
 
                     train_loss += cur_loss
                     train_cost += cur_cost
+                    train_aux_loss += cur_aux_loss
 
                     if i % 10 == 0:
                         myio.say("\r{}/{}".format(i, N))
 
-                    if i == N-1:  # EVAL
+                    if i == N-1 or (i % 10 == 0 and self.args.testing):  # EVAL
                         dev_loss = 0
 
                         if dev:
-                            dev_loss, (
-                                # dev_LRAP, dev_LRL, dev_CE,
-                                (dev_MAC_P, dev_MAC_R, dev_MAC_F1),
-                                (dev_MIC_P, dev_MIC_R, dev_MIC_F1),
-                                dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5
+                            dev_loss, dev_aux_loss, (
+                                dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10
                             ) = self.evaluate(dev, sess)
                             _dev_sum = sess.run(
                                 dev_summary_op,
-                                {dev_mac_f1: dev_MAC_F1, dev_mic_f1: dev_MIC_F1,
-                                 dev_mac_p: dev_MAC_P, dev_mic_p: dev_MIC_P,
-                                 dev_mac_r: dev_MAC_R, dev_mic_r: dev_MIC_R,
-                                 dev_pat3: dev_PAT3, dev_rat3: dev_RAT3
+                                {dev_pat5: dev_PAT5, dev_rat5: dev_RAT10,
+                                 dev_pat10: dev_PAT10, dev_rat10: dev_RAT10
                                  }
                             )
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
 
+                            feed_dict = {}
+                            for param_name, param_norm in self.get_pnorm_stat(sess).iteritems():
+                                feed_dict[p_norm_placeholders[param_name]] = param_norm
+                            _p_norm_sum = sess.run(p_norm_summary_op, feed_dict)
+                            p_norm_summary_writer.add_summary(_p_norm_sum, cur_step)
+
                         if test:
-                            test_loss, (
-                                # test_LRAP, test_LRL, test_CE,
-                                (test_MAC_P, test_MAC_R, test_MAC_F1),
-                                (test_MIC_P, test_MIC_R, test_MIC_F1),
-                                test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5
+                            test_loss, test_aux_loss, (
+                                test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10
                             ) = self.evaluate(test, sess)
 
-                        if self.args.performance == "f1_micro" and dev_MIC_F1 > best_dev_performance:
+                        if self.args.performance == "P@5" and dev_PAT5 > best_dev_performance:
                             unchanged = 0
-                            best_dev_performance = dev_MIC_F1
+                            best_dev_performance = dev_PAT5
                             result_table.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-                            # result_table2.add_row(
-                            #     [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
-                            # )
-                            result_table2.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
-                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10,
+                                 test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "p_macro" and dev_MAC_P > best_dev_performance:
+                        elif self.args.performance == "R@10" and dev_RAT10 > best_dev_performance:
                             unchanged = 0
-                            best_dev_performance = dev_MAC_P
+                            best_dev_performance = dev_RAT10
                             result_table.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-                            # result_table2.add_row(
-                            #     [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
-                            # )
-                            result_table2.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
-                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
-                            )
-                            if self.args.save_dir != "":
-                                self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "P@3" and dev_PAT3 > best_dev_performance:
-                            unchanged = 0
-                            best_dev_performance = dev_PAT3
-                            result_table.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-                            # result_table2.add_row(
-                            #     [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
-                            # )
-                            result_table2.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
-                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
-                            )
-                            if self.args.save_dir != "":
-                                self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "R@3" and dev_RAT3 > best_dev_performance:
-                            unchanged = 0
-                            best_dev_performance = dev_RAT3
-                            result_table.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-                            # result_table2.add_row(
-                            #     [epoch, dev_LRAP, dev_LRL, dev_CE, test_LRAP, test_LRL, test_CE]
-                            # )
-                            result_table2.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
-                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10,
+                                 test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
@@ -350,12 +306,14 @@ class ModelMultiTagsClassifier(object):
                             train_cost / (i+1),  # i.e. divided by N training batches
                             train_loss / (i+1),  # i.e. divided by N training batches
                             dev_loss,
-                            dev_MIC_P,
+                            dev_RAT10 if self.args.performance == "R@10" else dev_PAT5,
                             best_dev_performance
                         ))
-                        myio.say("P@3 {} R@3 {}".format(dev_PAT3, dev_RAT3))
+                        myio.say("aux loss : {} {}".format(train_aux_loss / (i+1), dev_aux_loss))
                         myio.say("\n{}\n".format(result_table))
-                        myio.say("\n{}\n".format(result_table2))
+                        myio.say("\tp_norm: {}\n".format(
+                            self.get_pnorm_stat(sess)
+                        ))
 
     def save(self, sess, path, step):
         # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again

@@ -71,10 +71,15 @@ class ModelQRTP(object):
             #     (self.target * tf.log(self.output + 1e-9)) + ((1 - self.target) * tf.log(1 - self.output + 1e-9)),
             #     name='cross_entropy'
             # )
-            self.loss_tp = -tf.reduce_mean(
-                (self.target * tf.log(self.output + 1e-9)) + ((1 - self.target) * tf.log(1 - self.output + 1e-9)),
+            # self.loss_tp = -tf.reduce_mean(
+            #     (self.target * tf.log(self.output + 1e-9)) + ((1 - self.target) * tf.log(1 - self.output + 1e-9)),
+            #     name='cross_entropy'
+            # )
+            self.loss_tp = tf.reduce_mean(
+                tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=out),
                 name='cross_entropy'
             )
+
             self.loss_tp *= self.args.tp_mul if 'tp_mul' in self.args else 1.  # version compatibility
 
     def _initialize_cost_function(self):
@@ -180,7 +185,6 @@ class ModelQRTP(object):
         ev = TPEvaluation(outputs, predictions, targets)
         results += [ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')]
         results += [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Recall(1), ev.Recall(3), ev.Recall(5)]
-        print '\nupper bound: P@3: {} P@5: {}\n'.format(ev.upper_bound_precision(3), ev.upper_bound_precision(5))
         return MAP, MRR, P1, P5, qr_loss, tp_loss, tuple(results)
 
     def train_batch(self, batch, train_op, global_step, train_summary_op, train_summary_writer, sess):

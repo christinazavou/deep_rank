@@ -5,67 +5,8 @@ import sys
 import time
 
 import myio
-from nn import EmbeddingLayer
 from tags_prediction.statistics import read_df
-from utils import load_embedding_iterator
-
-
-# def baselines_eval(train_data, dev_data, test_data):
-#     import numpy as np
-#     from sklearn.metrics import precision_recall_fscore_support
-#
-#     counts_per_class = np.zeros(100)
-#
-#     training_data = 0
-#
-#     for train_b in train_data:
-#         tags = np.array(train_b[2]).astype(np.float32)
-#         training_data += tags.shape[0]
-#         count_per_class = tags.sum(axis=0)
-#         assert len(count_per_class) == 100
-#         counts_per_class += count_per_class
-#
-#     assert training_data == 159975
-#
-#     majority_per_class = (counts_per_class > 159975/2).astype(np.int32)
-#     prob_per_class = np.round(counts_per_class / 159975.)
-#
-#     target = []
-#     for dev_b in dev_data:
-#         target.extend(dev_b[2])
-#     target = np.array(target).astype(np.float32)
-#     majority_predict = np.tile(majority_per_class, (target.shape[0], 1))
-#     prob_predict = np.tile(prob_per_class, (target.shape[0], 1))
-#     assert target.shape == majority_predict.shape == prob_predict.shape
-#
-#     print '\nDEV MACRO EVAL ON MAJORITY PREDICTION\n', precision_recall_fscore_support(target, majority_predict, average='macro')
-#     print '\nDEV MICRO EVAL ON MAJORITY PREDICTION\n', precision_recall_fscore_support(target, majority_predict, average='micro')
-#     print '\nDEV MACRO EVAL ON PROBABILITY PREDICTION\n', precision_recall_fscore_support(target, prob_predict, average='macro')
-#     print '\nDEV MICRO EVAL ON PROBABILITY PREDICTION\n', precision_recall_fscore_support(target, prob_predict, average='micro')
-#
-#     target = []
-#     for test_b in test_data:
-#         target.extend(test_b[2])
-#     target = np.array(target).astype(np.float32)
-#     majority_predict = np.tile(majority_per_class, (target.shape[0], 1))
-#     prob_predict = np.tile(prob_per_class, (target.shape[0], 1))
-#     assert target.shape == majority_predict.shape == prob_predict.shape
-#
-#     print '\nTEST MACRO EVAL ON MAJORITY PREDICTION\n', precision_recall_fscore_support(target, majority_predict, average='macro')
-#     print '\nTEST MICRO EVAL ON MAJORITY PREDICTION\n', precision_recall_fscore_support(target, majority_predict, average='micro')
-#     print '\nTEST MACRO EVAL ON PROBABILITY PREDICTION\n', precision_recall_fscore_support(target, prob_predict, average='macro')
-#     print '\nTEST MICRO EVAL ON PROBABILITY PREDICTION\n', precision_recall_fscore_support(target, prob_predict, average='micro')
-
-
-def create_embedding_layer(n_d, embs=None, unk="<unk>", padding="<padding>", fix_init_embs=True):
-
-    embedding_layer = EmbeddingLayer(
-            n_d=n_d,
-            vocab=[unk, padding],
-            embs=embs,
-            fix_init_embs=fix_init_embs
-        )
-    return embedding_layer
+from utils import load_embedding_iterator, create_embedding_layer
 
 
 def main():
@@ -83,7 +24,8 @@ def main():
 
     embedding_layer = create_embedding_layer(
         n_d=240,
-        embs=load_embedding_iterator(args.embeddings) if args.embeddings else None
+        embs=load_embedding_iterator(args.embeddings),
+        emb_words=False if args.use_embeddings else None
     )
 
     ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, label_tags, max_len=args.max_seq_len)
@@ -136,14 +78,16 @@ if __name__ == '__main__':
     argparser.add_argument("--corpus_w_tags", type=str)
     argparser.add_argument("--df_path", type=str)
     argparser.add_argument("--tags_file", type=str)
-
     argparser.add_argument("--embeddings", type=str, default="")
+
+    argparser.add_argument("--use_embeddings", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)
 
     argparser.add_argument("--batch_size", type=int, default=256)
     argparser.add_argument("--learning_rate", type=float, default=0.001)
+    argparser.add_argument("--optimizer", type=str, default="adam")
     argparser.add_argument("--l2_reg", type=float, default=1e-5)
     argparser.add_argument("--activation", "-act", type=str, default="tanh")
     argparser.add_argument("--dropout", type=float, default=0.0)
@@ -154,9 +98,10 @@ if __name__ == '__main__':
     argparser.add_argument("--depth", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
-
+    argparser.add_argument("--loss", type=str, default="")
+    argparser.add_argument("--testing", type=int, default=0)
     argparser.add_argument("--threshold", type=float, default=0.5)
-    argparser.add_argument("--performance", type=str, default="f1_micro")  # f1_micro p_macro, P@3, R@3
+    argparser.add_argument("--performance", type=str, default="R@10")  # P@5, R@10
 
     argparser.add_argument("--load_trained_vars", type=str, default="")
     argparser.add_argument("--load_pre_trained_part", type=str, default="")

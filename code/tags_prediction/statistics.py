@@ -95,6 +95,75 @@ if __name__ == '__main__':
     tags_set = set(list(df)) - {'id', 'title', 'body', 'tags', 'type', 'body_truncated'}
     print len(tags_set), ' tags: ', tags_set
 
+    """--------------------------------- EVAL VALID ----------------------------------------------------------------"""
+    questions_per_tag = {}
+    data_train = df[df['type'] == 'train']
+    data_eval = df[df['type'] != 'train']
+    for col in list(tags_set):
+        if 50 <= sum(data_train[col].values) <= 10000 and sum(data_eval[col].values) >= 5:
+            questions_per_tag[col] = (sum(data_train[col].values), sum(data_eval[col].values))
+    print questions_per_tag
+    with open(os.path.join(DIR, 'tags_stats', 'valid_eval_tags.txt'), 'w') as f:
+        for item in questions_per_tag.iteritems():
+            f.write('{} : {}\n'.format(item[0], item[1]))
+    valid_eval_tags = [k for k, v in questions_per_tag.iteritems()]
+    pickle.dump(valid_eval_tags, open(os.path.join(DIR, 'tags_files', 'valid_eval_tags.p'), 'wb'))
+
+    for typename, group_df in df.groupby('type'):
+        no_labels_cases_if_valid_eval_tags_selected = np.array(group_df[valid_eval_tags].values)
+        no_labels_cases_if_valid_eval_tags_selected = np.sum(no_labels_cases_if_valid_eval_tags_selected, 1)
+        no_labels_cases_if_valid_eval_tags_selected = np.sum((no_labels_cases_if_valid_eval_tags_selected == 0).astype(np.int32))
+        print no_labels_cases_if_valid_eval_tags_selected, ' with no labels in ', typename
+
+    exit()
+    """--------------------------------- EVAL VALID ----------------------------------------------------------------"""
+
+    # """--------------------------------- TRAIN VALID ----------------------------------------------------------------"""
+    # questions_per_tag = {}
+    # data_train = df[df['type'] == 'train']
+    # data_eval = df[df['type'] != 'train']
+    # for col in list(tags_set):
+    #     if 50 <= sum(data_train[col].values) <= 10000:
+    #         questions_per_tag[col] = (sum(data_train[col].values), sum(data_eval[col].values))
+    # print questions_per_tag
+    # with open(os.path.join(DIR, 'tags_stats', 'valid_train_tags.txt'), 'w') as f:
+    #     for item in questions_per_tag.iteritems():
+    #         f.write('{} : {}\n'.format(item[0], item[1]))
+    # valid_train_tags = [k for k, v in questions_per_tag.iteritems()]
+    # pickle.dump(valid_train_tags, open(os.path.join(DIR, 'tags_files', 'valid_train_tags.p'), 'wb'))
+    #
+    # for typename, group_df in df.groupby('type'):
+    #     no_labels_cases_if_valid_train_tags_selected = np.array(group_df[valid_train_tags].values)
+    #     no_labels_cases_if_valid_train_tags_selected = np.sum(no_labels_cases_if_valid_train_tags_selected, 1)
+    #     no_labels_cases_if_valid_train_tags_selected = np.sum((no_labels_cases_if_valid_train_tags_selected == 0).astype(np.int32))
+    #     print no_labels_cases_if_valid_train_tags_selected, ' with no labels in ', typename
+    #
+    # exit()
+    # """--------------------------------- TRAIN VALID ----------------------------------------------------------------"""
+
+    # """--------------------------------- VALID    -------------------------------------------------------------------"""
+    # questions_per_tag = {}
+    # data_train = df[df['type'] == 'train']
+    # data_eval = df[df['type'] != 'train']
+    # for col in list(tags_set):
+    #     if 50 <= sum(data_train[col].values) + sum(data_eval[col].values) <= 10000:
+    #         questions_per_tag[col] = sum(data_train[col].values) + sum(data_eval[col].values)
+    # print questions_per_tag
+    # with open(os.path.join(DIR, 'tags_stats', 'valid_tags.txt'), 'w') as f:
+    #     for item in questions_per_tag.iteritems():
+    #         f.write('{} : {}\n'.format(item[0], item[1]))
+    # valid_tags = [k for k, v in questions_per_tag.iteritems()]
+    # pickle.dump(valid_tags, open(os.path.join(DIR, 'tags_files', 'valid_tags.p'), 'wb'))
+    #
+    # for typename, group_df in df.groupby('type'):
+    #     no_labels_cases_if_valid_tags_selected = np.array(group_df[valid_tags].values)
+    #     no_labels_cases_if_valid_tags_selected = np.sum(no_labels_cases_if_valid_tags_selected, 1)
+    #     no_labels_cases_if_valid_tags_selected = np.sum((no_labels_cases_if_valid_tags_selected == 0).astype(np.int32))
+    #     print no_labels_cases_if_valid_tags_selected, ' with no labels in ', typename
+    #
+    # exit()
+    # """--------------------------------- VALID    -------------------------------------------------------------------"""
+
     # """--------------------------------- ABOVE 20 -------------------------------------------------------------------"""
     # questions_per_tag = {}
     # data_train = df[df['type'] == 'train']

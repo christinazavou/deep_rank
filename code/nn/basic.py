@@ -137,42 +137,6 @@ class EmbeddingLayer(object):
                     dtype="int32"
                 )
 
-    @property
-    def params(self):
-        return [self.embeddings_trainable]
-
-    @params.setter
-    def params(self, param_list):
-        self.embeddings = tf.assign(self.embeddings, param_list[0])
-        # self.embeddings.set_value(param_list[0].get_value())
-
-
-# class Dropout(object):
-#     """
-#         Dropout layer. forward(x) returns the dropout version of x
-#
-#         Inputs
-#         ------
-#
-#         dropout_prob : tf variable that stores the dropout probability
-#
-#     """
-#     def __init__(self, dropout_prob):
-#         self.dropout_prob = dropout_prob
-#
-#     def forward(self, x):
-#
-#         with tf.name_scope("dropout"):
-#             x_out = tf.nn.dropout(x, 1. - self.dropout_prob)
-#             return x_out
-#
-#
-# def apply_dropout(x, dropout_prob):
-#     """
-#         Apply dropout on x with the specified probability
-#     """
-#     return Dropout(dropout_prob).forward(x)
-
 
 class Layer(object):
     """

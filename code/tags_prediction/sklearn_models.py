@@ -3,25 +3,21 @@ import os
 import pickle
 import sys
 from datetime import datetime
-
 import numpy as np
 import pandas as pd
+
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.feature_selection import chi2, SelectKBest, f_classif
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import coverage_error, label_ranking_average_precision_score, label_ranking_loss
-from sklearn.metrics import precision_recall_fscore_support
 from sklearn.model_selection import GridSearchCV
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.preprocessing import normalize
 from sklearn.svm import LinearSVC
 from sklearn.svm import SVC
+from sklearn.naive_bayes import MultinomialNB
+
 from evaluation import Evaluation
-
-
-# from tags_prediction.statistics import read_df
-# from utils import load_embedding_iterator
 
 
 def read_df(df_file, chunk_size=None, read_columns=None):
@@ -82,7 +78,7 @@ def grid_search(train_x, train_y, parameters, pipeline, scoring='f1_micro'):
     return best_clf
 
 
-def evaluate(test_x, test_y, labels, model):
+def evaluate(test_x, test_y, model):
     """"""
     """------------------------------------------remove ill evaluation-------------------------------------------"""
     eval_labels = []
@@ -107,10 +103,6 @@ def evaluate(test_x, test_y, labels, model):
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         y_scores = y_scores[:, eval_labels]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
-        print 'label ranking average precision score: ', label_ranking_average_precision_score(test_y, y_scores)
-        print 'coverage error: ', coverage_error(test_y, y_scores)
-        print 'label ranking loss: ', label_ranking_loss(test_y, y_scores)
-        print
     except:
         y_scores = model.predict(test_x)
         y_scores = y_scores[:, eval_labels]
@@ -119,15 +111,18 @@ def evaluate(test_x, test_y, labels, model):
     """------------------------------------------remove ill evaluation-------------------------------------------"""
     predictions = predictions[:, eval_labels]
     """------------------------------------------remove ill evaluation-------------------------------------------"""
-    # precision, recall, f1, support = precision_recall_fscore_support(test_y, predictions)
-    # results = pd.DataFrame({'tag/label': labels, 'precision': precision, 'recall': recall, 'f1': f1, 'support': support})
-    # print results.head(len(labels))
 
     ev = Evaluation(y_scores, predictions, test_y)
+    print 'label ranking average precision score: ', ev.lr_ap_score()
+    print 'coverage error: ', ev.cov_error()
+    print 'label ranking loss: ', ev.lr_loss()
+    print
+
     print 'MACRO PRECISION RECALL F1: ', ev.precision_recall_fscore(average='macro')
     print 'MICRO PRECISION RECALL F1: ', ev.precision_recall_fscore(average='micro')
-    print 'P@1: {}\tP@3: {}\tP@5: {}\tR@1: {}\tR@3: {}\tR@5: {}\n'.format(
-        ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Recall(1), ev.Recall(3), ev.Recall(5))
+    print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(
+        ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
+        ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10))
 
 
 def get_data(df, type_name, labels):
@@ -257,6 +252,11 @@ def main():
                 # "estimator__class_weight": ['balanced', None],
                 "estimator__C": [1],
             })
+        elif args.method == 'naivebayes':
+            clf = OneVsRestClassifier(MultinomialNB(), n_jobs=1)
+            parameters.update({
+                "estimator__alpha": [1.0],
+            })
         elif args.method == 'svm':
             clf = OneVsRestClassifier(SVC(verbose=10), n_jobs=1)
             parameters.update({
@@ -329,9 +329,9 @@ def main():
     print x_test.shape, x_test.dtype, type(x_test)
 
     print 'EVALUATE ON TEST\n'
-    evaluate(x_test, y_test, label_tags, tuned_model)
+    evaluate(x_test, y_test, tuned_model)
     print 'EVALUATE ON DEV\n'
-    evaluate(x_dev, y_dev, label_tags, tuned_model)
+    evaluate(x_dev, y_dev, tuned_model)
 
     print 'Finished at: ', str(datetime.now())
 
