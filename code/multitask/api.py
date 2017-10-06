@@ -4,10 +4,10 @@ import sys
 from utils import load_embedding_iterator
 import numpy as np
 import tensorflow as tf
-from qa import myio as qaio
+from qr import myio as qaio
 from tags_prediction import myio as tpio
 import pickle
-from qa.evaluation import Evaluation as QAEvaluation
+from qr.evaluation import Evaluation as QAEvaluation
 from tags_prediction.evaluation import Evaluation as TPEvaluation
 
 

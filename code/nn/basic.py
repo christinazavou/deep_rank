@@ -215,7 +215,7 @@ class Layer(object):
 if __name__ == '__main__':
 
     def test_embedding_layer():
-        from qa import myio
+        from qr import myio
         from utils import load_embedding_iterator
         raw_corpus = myio.read_corpus('/home/christina/Documents/Thesis/taolei_code/askubuntu/texts_raw_fixed.txt')
         embedding_layer = myio.create_embedding_layer(

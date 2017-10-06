@@ -1,7 +1,7 @@
 import argparse
 import myio
 import sys
-from qa.myio import say, create_embedding_layer
+from qr.myio import say, create_embedding_layer
 from utils import load_embedding_iterator, read_df
 import numpy as np
 from evaluation import Evaluation

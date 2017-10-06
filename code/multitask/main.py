@@ -1,5 +1,5 @@
 import argparse
-from qa import myio as qaio
+from qr import myio as qaio
 import sys
 import time
 import os

@@ -1,5 +1,5 @@
 import argparse
-from qa import myio
+from qr import myio
 import sys
 import gzip
 from utils import load_embedding_iterator

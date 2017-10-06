@@ -3,10 +3,10 @@ import os
 import sys
 import time
 
-from qa.WideNDeep.model import Model
-from qa.WideNDeep.myio import read_eval_annotations, read_train_annotations, create_eval_batches, \
+from qr.WideNDeep.model import Model
+from qr.WideNDeep.myio import read_eval_annotations, read_train_annotations, create_eval_batches, \
     create_train_batches
-from qa.myio import create_embedding_layer, map_corpus
+from qr.myio import create_embedding_layer, map_corpus
 from tags_prediction.myio import read_corpus
 from utils import load_embedding_iterator
 

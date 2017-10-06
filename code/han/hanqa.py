@@ -1,12 +1,12 @@
 import tensorflow as tf
 from nn import get_activation_by_name
-from qa.evaluation import Evaluation
+from qr.evaluation import Evaluation
 import numpy as np
 import os
 import gzip
 import pickle
 from prettytable import PrettyTable
-from qa.myio import say
+from qr.myio import say
 from tensorflow.contrib.rnn import LSTMStateTuple
 
 

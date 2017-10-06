@@ -8,7 +8,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics import hamming_loss
 from sklearn.model_selection import StratifiedShuffleSplit
 
-from qa import myio
+from qr import myio
 from tags_prediction.statistics import read_df
 
 

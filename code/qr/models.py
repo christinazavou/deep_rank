@@ -75,6 +75,13 @@ class ModelQR(object):
         l2 = tf.norm(x, ord=2, axis=2, keep_dims=True)
         return x / (l2 + eps)
 
+    def get_pnorm_stat(self, session):
+        dict_norms = {}
+        for param_name, param in self.params.iteritems():
+            l2 = session.run(tf.norm(param))
+            dict_norms[param_name] = round(l2, 3)
+        return dict_norms
+
     @staticmethod
     def max_margin_loss(labels, scores):
         pos_scores = [score for label, score in zip(labels, scores) if label == 1]
@@ -169,6 +176,15 @@ class ModelQR(object):
             train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
             train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
 
+            p_norm_summaries = {}
+            p_norm_placeholders = {}
+            for param_name, param_norm in self.get_pnorm_stat(sess).iteritems():
+                p_norm_placeholders[param_name] = tf.placeholder(tf.float32)
+                p_norm_summaries[param_name] = tf.summary.scalar(param_name, p_norm_placeholders[param_name])
+            p_norm_summary_op = tf.summary.merge(p_norm_summaries.values())
+            p_norm_summary_dir = os.path.join(self.args.save_dir, "summaries", "p_norm")
+            p_norm_summary_writer = tf.summary.FileWriter(p_norm_summary_dir, sess.graph)
+
             # Dev Summaries
             dev_loss = tf.placeholder(tf.float32)
             dev_map = tf.placeholder(tf.float32)
@@ -219,6 +235,12 @@ class ModelQR(object):
                             )
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
 
+                            feed_dict = {}
+                            for param_name, param_norm in self.get_pnorm_stat(sess).iteritems():
+                                feed_dict[p_norm_placeholders[param_name]] = param_norm
+                            _p_norm_sum = sess.run(p_norm_summary_op, feed_dict)
+                            p_norm_summary_writer.add_summary(_p_norm_sum, cur_step)
+
                         if test:
                             test_MAP, test_MRR, test_P1, test_P5, test_hinge_loss = self.evaluate(test, sess)
 
@@ -239,6 +261,9 @@ class ModelQR(object):
                             best_dev
                         ))
                         say("\n{}\n".format(result_table))
+                        myio.say("\tp_norm: {}\n".format(
+                            self.get_pnorm_stat(sess)
+                        ))
 
     def save(self, sess, path, step):
         # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again
