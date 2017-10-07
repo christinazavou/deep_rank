@@ -99,6 +99,7 @@ if __name__ == '__main__':
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
     argparser.add_argument("--loss", type=str, default="")
+    argparser.add_argument("--reduce", type=str, default="mean")
     argparser.add_argument("--testing", type=int, default=0)
     argparser.add_argument("--threshold", type=float, default=0.5)
     argparser.add_argument("--performance", type=str, default="R@10")  # P@5, R@10

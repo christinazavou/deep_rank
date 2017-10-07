@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
     argparser.add_argument("--average", type=int, default=0)
     argparser.add_argument("--batch_size", type=int, default=40)
-    # argparser.add_argument("--learning", type=str, default="adam")
+    argparser.add_argument("--optimizer", type=str, default="adam")
     argparser.add_argument("--learning_rate", type=float, default=0.001)
     argparser.add_argument("--l2_reg", type=float, default=1e-5)
     argparser.add_argument("--activation", "-act", type=str, default="tanh")
@@ -105,6 +105,7 @@ if __name__ == "__main__":
     argparser.add_argument("--normalize", type=int, default=1)
     argparser.add_argument("--reweight", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")
+    argparser.add_argument("--reduce", type=str, default="mean")
     argparser.add_argument("--concat", type=int, default=0)
 
     argparser.add_argument("--threshold", type=float, default=0.5)

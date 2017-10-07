@@ -71,8 +71,10 @@ class ModelMultiTagsClassifier(object):
                 with tf.name_scope('loss'):
 
                     x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
-                    self.loss = tf.reduce_mean(x_entropy, name='cross_entropy')
-
+                    if self.args.reduce == "mean":
+                        self.loss = tf.reduce_mean(x_entropy, name='cross_entropy')
+                    else:
+                        self.loss = tf.reduce_sum(x_entropy, name='cross_entropy')
                     _mask = tf.expand_dims(tf.cast(tf.greater(tf.reduce_sum(self.target, 0), 0), tf.float32), 1)
                     _aux_loss = tf.reduce_mean(tf.matmul(x_entropy, _mask))
                     self._aux_loss = _aux_loss

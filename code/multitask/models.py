@@ -15,6 +15,7 @@ class ModelQRTP(object):
     def ready(self):
         self._initialize_placeholders_graph()
         self._initialize_encoder_graph()
+        self.encoder_trainable_vars = tf.trainable_variables()
         self._initialize_output_graph_qa()
         self._initialize_output_graph_tp()
         for param in tf.trainable_variables():
@@ -59,28 +60,26 @@ class ModelQRTP(object):
                 )
                 self.b_o = tf.Variable(tf.zeros([self.output_dim]), name='bias_out')
 
-            out = tf.matmul(self.h_final, self.w_o) + self.b_o
-            self.output = tf.nn.sigmoid(out)
+            output = tf.matmul(self.h_final, self.w_o) + self.b_o
+            self.act_output = tf.nn.sigmoid(output)
 
+            # for evaluation
             self.prediction = tf.where(
-                self.output > self.args.threshold, tf.ones_like(self.output), tf.zeros_like(self.output)
+                self.act_output > self.args.threshold, tf.ones_like(self.act_output), tf.zeros_like(self.act_output)
             )
 
         with tf.name_scope('TpLoss'):
-            # self.loss_tp = -tf.reduce_sum(
-            #     (self.target * tf.log(self.output + 1e-9)) + ((1 - self.target) * tf.log(1 - self.output + 1e-9)),
-            #     name='cross_entropy'
-            # )
-            # self.loss_tp = -tf.reduce_mean(
-            #     (self.target * tf.log(self.output + 1e-9)) + ((1 - self.target) * tf.log(1 - self.output + 1e-9)),
-            #     name='cross_entropy'
-            # )
-            self.loss_tp = tf.reduce_mean(
-                tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=out),
-                name='cross_entropy'
-            )
-
+            x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
+            # self.loss_tp = tf.reduce_sum(x_entropy, name='cross_entropy')
+            if self.args.reduce == "mean":
+                self.loss_tp = tf.reduce_mean(x_entropy, name='cross_entropy')
+            else:
+                self.loss_tp = tf.reduce_sum(x_entropy, name='cross_entropy')
             self.loss_tp *= self.args.tp_mul if 'tp_mul' in self.args else 1.  # version compatibility
+
+            _mask = tf.expand_dims(tf.cast(tf.greater(tf.reduce_sum(self.target, 0), 0), tf.float32), 1)
+            _aux_loss = tf.reduce_mean(tf.matmul(x_entropy, _mask))
+            self._loss_tp_aux = _aux_loss
 
     def _initialize_cost_function(self):
         with tf.name_scope('cost'):
@@ -129,7 +128,7 @@ class ModelQRTP(object):
 
     def eval_batch(self, titles, bodies, sess):
         scores, outputs, predictions = sess.run(
-            [self.scores, self.output, self.prediction],
+            [self.scores, self.act_output, self.prediction],
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
@@ -169,11 +168,10 @@ class ModelQRTP(object):
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
-        tp_loss = -np.mean((targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9)))
+        x_entropy = (targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9))
+        # tp_loss = -np.sum(x_entropy)
+        tp_loss = -np.mean(x_entropy)
 
-        ev = TPEvaluation(outputs, predictions, targets)
-        # results = [ev.lr_ap_score(), ev.lr_loss(), ev.cov_error()]
-        results = []
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []
         for label in range(targets.shape[1]):
@@ -190,8 +188,8 @@ class ModelQRTP(object):
         outputs, predictions, targets = outputs[eval_samples, :], predictions[eval_samples, :], targets[eval_samples, :]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         ev = TPEvaluation(outputs, predictions, targets)
-        results += [ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')]
-        results += [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Recall(1), ev.Recall(3), ev.Recall(5)]
+        results = [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
+                ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10)]
         return MAP, MRR, P1, P5, qr_loss, tp_loss, tuple(results)
 
     def train_batch(self, batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
@@ -219,24 +217,18 @@ class ModelQRTP(object):
             test_MAP = test_MRR = test_P1 = test_P5 = 0
 
             result_table_tp = PrettyTable(
-                ["Epoch", "dev A P", "dev A R", "dev A F1", "dev I P", "dev I R", "dev I F1",
-                 "tst A P", "tst A R", "tst A F1", "tst I P", "tst I R", "tst I F1"]
+                ["Epoch", "dev P@1", "dev P@3", "dev P@5", "dev P@10", "dev R@1", "dev R@3", "dev R@5", "dev R@10",
+                 "tst P@1", "tst P@3", "tst P@5", "tst P@10", "tst R@1", "tst R@3", "tst R@5", "tst R@10"]
             )
 
-            result_table_tp2 = PrettyTable(
-                ["Epoch", "dev P@1", "dev P@3", "dev P@5", "dev R@1", "dev R@3", "dev R@5",
-                 "tst P@1", "tst P@3", "tst P@5", "tst R@1", "tst R@3", "tst R@5"]
-            )
-
-            dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1 = 0, 0, 0, 0, 0, 0
-            dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5 = 0, 0, 0, 0, 0, 0
-            test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1 = 0, 0, 0, 0, 0, 0
-            test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5 = 0, 0, 0, 0, 0, 0
+            dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10 = 0, 0, 0, 0, 0, 0, 0, 0
+            test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, testRAT10 = 0, 0, 0, 0, 0, 0, 0, 0
 
             best_dev_performance = -1
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
+            #todo
             optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
             grads_and_vars = optimizer.compute_gradients(self.cost)
             train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
@@ -279,37 +271,20 @@ class ModelQRTP(object):
             dev_loss_tp = tf.placeholder(tf.float32)
             dev_loss_tp_summary = tf.summary.scalar("dev_loss_tp", dev_loss_tp)
 
-            dev_mac_p = tf.placeholder(tf.float32)
-            dev_mic_p = tf.placeholder(tf.float32)
-            dev_mac_p_summary = tf.summary.scalar("dev_mac_p", dev_mac_p)
-            dev_mic_p_summary = tf.summary.scalar("dev_mic_p", dev_mic_p)
-
-            dev_mac_r = tf.placeholder(tf.float32)
-            dev_mic_r = tf.placeholder(tf.float32)
-            dev_mac_r_summary = tf.summary.scalar("dev_mac_r", dev_mac_r)
-            dev_mic_r_summary = tf.summary.scalar("dev_mic_r", dev_mic_r)
-
-            dev_mac_f1 = tf.placeholder(tf.float32)
-            dev_mic_f1 = tf.placeholder(tf.float32)
-            dev_mac_f1_summary = tf.summary.scalar("dev_mac_f1", dev_mac_f1)
-            dev_mic_f1_summary = tf.summary.scalar("dev_mic_f1", dev_mic_f1)
-
-            dev_pat1 = tf.placeholder(tf.float32)
-            dev_pat1_summary = tf.summary.scalar("dev_pat1", dev_pat1)
-            dev_pat3 = tf.placeholder(tf.float32)
-            dev_pat3_summary = tf.summary.scalar("dev_pat3", dev_pat3)
-            dev_rat1 = tf.placeholder(tf.float32)
-            dev_rat1_summary = tf.summary.scalar("dev_rat1", dev_rat1)
-            dev_rat3 = tf.placeholder(tf.float32)
-            dev_rat3_summary = tf.summary.scalar("dev_rat3", dev_rat3)
+            dev_pat5 = tf.placeholder(tf.float32)
+            dev_pat5_summary = tf.summary.scalar("dev_pat5", dev_pat5)
+            dev_pat10 = tf.placeholder(tf.float32)
+            dev_pat10_summary = tf.summary.scalar("dev_pat10", dev_pat10)
+            dev_rat5 = tf.placeholder(tf.float32)
+            dev_rat5_summary = tf.summary.scalar("dev_rat5", dev_rat5)
+            dev_rat10 = tf.placeholder(tf.float32)
+            dev_rat10_summary = tf.summary.scalar("dev_rat10", dev_rat10)
 
             dev_summary_op = tf.summary.merge(
-                [dev_loss_qr_summary, dev_map_summary, dev_mrr_summary,
+                [dev_loss_qr_summary,
+                 dev_map_summary, dev_mrr_summary,
                  dev_loss_tp_summary,
-                 dev_mac_p_summary, dev_mic_p_summary,
-                 dev_mac_r_summary, dev_mic_r_summary,
-                 dev_mac_f1_summary, dev_mic_f1_summary,
-                 dev_pat1_summary, dev_pat3_summary, dev_rat1_summary, dev_rat3_summary
+                 dev_pat5_summary, dev_pat10_summary, dev_rat5_summary, dev_rat10_summary,
                  ]
             )
             dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
@@ -352,20 +327,14 @@ class ModelQRTP(object):
 
                         if dev:
                             dev_MAP, dev_MRR, dev_P1, dev_P5, dev_qr_loss, dev_tp_loss, (
-                                # dev_LRAP, dev_LRL, dev_CE,
-                                (dev_MAC_P, dev_MAC_R, dev_MAC_F1),
-                                (dev_MIC_P, dev_MIC_R, dev_MIC_F1),
-                                dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
+                                dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10
                             ) = self.evaluate(dev, sess)
 
                             _dev_sum = sess.run(
                                 dev_summary_op,
                                 {dev_loss_qr: dev_qr_loss, dev_map: dev_MAP, dev_mrr: dev_MRR,
                                  dev_loss_tp: dev_tp_loss,
-                                 dev_mac_f1: dev_MAC_F1, dev_mic_f1: dev_MIC_F1,
-                                 dev_mac_p: dev_MAC_P, dev_mic_p: dev_MIC_P,
-                                 dev_mac_r: dev_MAC_R, dev_mic_r: dev_MIC_R,
-                                 dev_pat1: dev_PAT1, dev_pat3: dev_PAT3, dev_rat1: dev_RAT1, dev_rat3: dev_RAT3
+                                 dev_pat5: dev_PAT5, dev_pat10: dev_PAT10, dev_rat5: dev_RAT5, dev_rat10: dev_RAT10
                                  },
                             )
                             dev_summary_writer.add_summary(_dev_sum, cur_step)
@@ -378,10 +347,7 @@ class ModelQRTP(object):
 
                         if test:
                             test_MAP, test_MRR, test_P1, test_P5, test_qr_loss, test_tp_loss, (
-                                # test_LRAP, test_LRL, test_CE,
-                                (test_MAC_P, test_MAC_R, test_MAC_F1),
-                                (test_MIC_P, test_MIC_R, test_MIC_F1),
-                                test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5,
+                                test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10
                             ) = self.evaluate(test, sess)
 
                         if self.args.performance == "dev_mrr" and dev_MRR > best_dev_performance:
@@ -391,67 +357,39 @@ class ModelQRTP(object):
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
                             result_table_tp.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-                            result_table_tp2.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
-                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10,
+                                 test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "p_macro" and dev_MAC_P > best_dev_performance:
+                        elif self.args.performance == "P@5" and dev_PAT5 > best_dev_performance:
                             unchanged = 0
-                            best_dev_performance = dev_MAC_P
+                            best_dev_performance = dev_PAT5
                             result_table_qr.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
                             result_table_tp.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-                            result_table_tp2.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
-                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10,
+                                 test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "P@3" and dev_PAT3 > best_dev_performance:
+                        elif self.args.performance == "R@10" and dev_RAT10 > best_dev_performance:
                             unchanged = 0
-                            best_dev_performance = dev_PAT3
+                            best_dev_performance = dev_RAT10
                             result_table_qr.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
                             result_table_tp.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-                            result_table_tp2.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
-                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
-                            )
-                            if self.args.save_dir != "":
-                                self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "R@3" and dev_RAT3 > best_dev_performance:
-                            unchanged = 0
-                            best_dev_performance = dev_RAT3
-                            result_table_qr.add_row(
-                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
-                            )
-                            result_table_tp.add_row(
-                                [epoch, dev_MAC_P, dev_MAC_R, dev_MAC_F1, dev_MIC_P, dev_MIC_R, dev_MIC_F1,
-                                 test_MAC_P, test_MAC_R, test_MAC_F1, test_MIC_P, test_MIC_R, test_MIC_F1]
-                            )
-                            result_table_tp2.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_RAT1, dev_RAT3, dev_RAT5,
-                                 test_PAT1, test_PAT3, test_PAT5, test_RAT1, test_RAT3, test_RAT5]
+                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10,
+                                 test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
                         say(
                             "\r\n\nEpoch {}:\tcost={:.3f}, loss_qr={:.3f}, loss_tp={:.3f}, "
-                            "devMRR={:.3f}, DevLossQR={:.3f}, DevLossTP={:.3f}, devMacroP={:.3f}\n".format(
+                            "devMRR={:.3f}, DevLossQR={:.3f}, DevLossTP={:.3f}\n".format(
                                 epoch,
                                 train_cost / (i+1),  # i.e. divided by N training batches
                                 train_loss_qr / (i+1),  # i.e. divided by N training batches
@@ -459,13 +397,11 @@ class ModelQRTP(object):
                                 dev_MRR,
                                 dev_qr_loss,
                                 dev_tp_loss,
-                                dev_MAC_P
                             )
                         )
-                        say("P@3 {} R@3 {}\n".format(dev_PAT3, dev_RAT3))
+                        say("P@5 {} R@10 {}\n".format(dev_PAT5, dev_RAT10))
                         say("\n{}\n".format(result_table_qr))
                         say("\n{}\n".format(result_table_tp))
-                        say("\n{}\n".format(result_table_tp2))
                         say("\tp_norm: {}\n".format(
                             self.get_pnorm_stat(sess)
                         ))
