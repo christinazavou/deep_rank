@@ -1,7 +1,7 @@
 import argparse
 import myio
 import sys
-from utils import load_embedding_iterator
+from utils import load_embedding_iterator, create_embedding_layer
 import numpy as np
 import tensorflow as tf
 from qr import myio as qaio
@@ -15,13 +15,12 @@ class QRTPAPI:
 
     def __init__(self, model_path, corpus_path, emb_path, output_dim, session, layer):
         raw_corpus = qaio.read_corpus(corpus_path)
-        embedding_layer = qaio.create_embedding_layer(
-            raw_corpus,
+        embedding_layer = create_embedding_layer(
             n_d=10,
-            cut_off=1,
-            embs=load_embedding_iterator(emb_path)
+            embs=load_embedding_iterator(args.embeddings),
+            only_words=False
         )
-
+        # weights = myio.create_idf_weights(corpus_path, embedding_layer) # todo
         qaio.say("vocab size={}, corpus size={}\n".format(
             embedding_layer.n_V,
             len(raw_corpus)
@@ -36,6 +35,7 @@ class QRTPAPI:
         elif layer.lower() == "gru":
             from models import GruQRTP as Model
 
+        # model = Model(args=None, embedding_layer=embedding_layer, output_dim=output_dim, weights=weights)
         model = Model(args=None, embedding_layer=embedding_layer, output_dim=output_dim)
 
         model.load_n_set_model(model_path, session)

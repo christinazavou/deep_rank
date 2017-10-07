@@ -4,12 +4,12 @@ import pandas as pd
 from nn import EmbeddingLayer
 
 
-def create_embedding_layer(n_d, embs, emb_words=False, unk="<unk>", padding="<padding>"):
+def create_embedding_layer(n_d, embs, only_words=False, unk="<unk>", padding="<padding>"):
 
     embedding_layer = EmbeddingLayer(
             n_d=n_d,
-            vocab=[w for w, v in embs] + [unk, padding] if emb_words else [unk, padding],
-            embs=embs if not emb_words else None,
+            vocab=[w for w, v in embs] + [unk, padding] if only_words else [unk, padding],
+            embs=embs if not only_words else None,
         )
     # print embedding_layer.oov_id
     # print embedding_layer.vocab_map.keys()[0:5]

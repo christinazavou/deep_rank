@@ -14,7 +14,7 @@ def main():
     embedding_layer = create_embedding_layer(
         n_d=240,
         embs=load_embedding_iterator(args.embeddings),
-        emb_words=False if args.use_embeddings else None
+        only_words=False if args.use_embeddings else True
     )
     print("vocab size={}, corpus size={}\n".format(embedding_layer.n_V, len(raw_corpus)))
     if args.reweight:
@@ -63,16 +63,13 @@ def main():
         model.ready()
         print 'total params: ', model.num_parameters()
 
-        assert not (args.load_pre_trained_part != "" and args.load_trained_vars != "")
-        if args.load_trained_vars:
-            assign_ops = model.load_trained_vars(args.load_trained_vars)
-        elif args.load_pre_trained_part:
-            assign_ops = model.load_pre_trained_part(args.load_pre_trained_part)
-        else:
-            assign_ops = None
+        if args.load_pre_trained_part:
+            # need to remove the old assigns to embeddings
+            model.init_assign_ops = model.load_pre_trained_part(args.load_pre_trained_part)
+        print '\nmodel init_assign_ops: {}\n'.format(model.init_assign_ops)
 
         model.train_model(
-            train_batches, dev=dev if args.dev else None, test=test if args.test else None, assign_ops=assign_ops
+            train_batches, dev=dev if args.dev else None, test=test if args.test else None
         )
 
 
@@ -82,11 +79,12 @@ if __name__ == "__main__":
     argparser.add_argument("--corpus_w_tags", type=str)
     argparser.add_argument("--tags_file", type=str)
     argparser.add_argument("--embeddings", type=str, default="")
-
     argparser.add_argument("--corpus", type=str)
     argparser.add_argument("--train", type=str, default="")
     argparser.add_argument("--test", type=str, default="")
     argparser.add_argument("--dev", type=str, default="")
+    argparser.add_argument("--load_pre_trained_part", type=str, default="")
+    argparser.add_argument("--testing", type=int, default=0)
 
     argparser.add_argument("--use_embeddings", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
@@ -115,9 +113,6 @@ if __name__ == "__main__":
     argparser.add_argument("--qr_mul", type=float, default=1.)  # 1 or 0.5 or 0.05
     argparser.add_argument("--tp_mul", type=float, default=1.)  # 1 or 2 or 20
 
-    argparser.add_argument("--load_trained_vars", type=str, default="")
-    argparser.add_argument("--load_pre_trained_part", type=str, default="")
-
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))
     out_dir = os.path.join(this_dir, "runs", timestamp)
@@ -125,7 +120,6 @@ if __name__ == "__main__":
     argparser.add_argument("--save_dir", type=str, default=out_dir)
 
     args = argparser.parse_args()
-    print args
-    print ""
+    print '\n{}\n'.format(args)
     main()
 

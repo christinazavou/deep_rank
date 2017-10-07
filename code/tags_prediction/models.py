@@ -155,7 +155,7 @@ class ModelMultiTagsClassifier(object):
         train_summary_writer.add_summary(_summary, _step)
         return _step, _loss, _aux_loss, _cost
 
-    def train_model(self, train_batches, dev=None, test=None, assign_ops=None):
+    def train_model(self, train_batches, dev=None, test=None):
         with tf.Session() as sess:
 
             result_table = PrettyTable(
@@ -180,9 +180,15 @@ class ModelMultiTagsClassifier(object):
             train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
             sess.run(tf.global_variables_initializer())
-            if assign_ops:
+            emb = sess.run(self.embeddings)
+            print '\nemb {}\n'.format(emb[10][0:10])
+
+            if self.init_assign_ops != {}:
                 print 'assigning trained values ...\n'
-                sess.run(assign_ops)
+                sess.run(self.init_assign_ops)
+                emb = sess.run(self.embeddings)
+                print '\nemb {}\n'.format(emb[10][0:10])
+                self.init_assign_ops = {}
 
             if self.args.save_dir != "":
                 print("Writing to {}\n".format(self.args.save_dir))
@@ -243,8 +249,11 @@ class ModelMultiTagsClassifier(object):
 
                 for i in xrange(N):
                     titles_b, bodies_b, tag_labels_b = train_batches[i]
+
                     if i % 10 == 0 and self.args.testing:
                         print 'labels in batch: ', np.sum(np.sum(tag_labels_b, 0) > 0)
+                        emb = sess.run(self.embeddings)
+                        print '\nemb {}\n'.format(emb[10][0:10])
 
                     cur_step, cur_loss, cur_aux_loss, cur_cost = self.train_batch(
                         titles_b, bodies_b, tag_labels_b,
@@ -342,7 +351,8 @@ class ModelMultiTagsClassifier(object):
         assign_ops = {}
         with gzip.open(path) as fin:
             data = pickle.load(fin)
-            assert self.args.hidden_dim == data["args"].hidden_dim
+            assert self.args.hidden_dim == data["args"].hidden_dim, 'you are trying to load model with {} hid-dim, '\
+                'while your model has {} hid dim'.format(data["args"].hidden_dim, self.args.hidden_dim)
             params_values = data['params_values']
             graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
@@ -353,7 +363,11 @@ class ModelMultiTagsClassifier(object):
                         assign_op = tf.assign(variable, param_value)
                         assign_ops[param_name] = assign_op
                     except:
-                        raise Exception("{} not found in my graph".format(param_name))
+                        raise Exception("{} not found in my graph. you are probably loading weights from a model "
+                                        "trained on different amount of outputs-tags. also set use_embeddings to 1".
+                                        format(param_name))
+                        # note: use_embeddings 0 is causing error for unknown reason but anyway here we reset embeddings
+                        # with the loaded ones
                 else:
                     print param_name, ' is not in my dict'
         return assign_ops
@@ -364,7 +378,9 @@ class ModelMultiTagsClassifier(object):
         assign_ops = {}
         with gzip.open(path) as fin:
             data = pickle.load(fin)
-            assert self.args.hidden_dim == data["args"].hidden_dim
+            print("WARNING: hid dim ({}) != pre trained model hid dim ({}). Use {} instead.\n".format(
+                self.args.hidden_dim, data["args"].hidden_dim, data["args"].hidden_dim
+            ))
             params_values = data['params_values']
             graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
@@ -377,7 +393,6 @@ class ModelMultiTagsClassifier(object):
         with gzip.open(path) as fin:
             data = pickle.load(fin)
         self.args = data["args"]
-        # self.output_dim = data["output_dim"] todo: add it ?
         self.ready()
         assign_ops = self.load_trained_vars(path)
         sess.run(tf.global_variables_initializer())
@@ -385,6 +400,7 @@ class ModelMultiTagsClassifier(object):
         for param_name, param_assign_op in assign_ops.iteritems():
             print 'assigning values in ', param_name
             sess.run(param_assign_op)
+        self.init_assign_ops = {}  # to avoid reassigning embeddings if train
 
     def num_parameters(self):
         total_parameters = 0
@@ -408,6 +424,12 @@ class LstmMultiTagsClassifier(ModelMultiTagsClassifier):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        if embedding_layer.init_embeddings is not None:
+            embedding_var = tf.trainable_variables()[0]
+            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
+            self.init_assign_ops = {embedding_var: assign_op}
+        else:
+            self.init_assign_ops = {}
 
     def _initialize_encoder_graph(self):
 
@@ -493,8 +515,6 @@ class LstmMultiTagsClassifier(ModelMultiTagsClassifier):
                 h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
                 self.h_final = self.normalize_2d(h_final)
 
-                # todo: can add dropout before inputting to MLP. normalization can be removed. ?!
-
     def _find_sequence_length(self, ids):
         s = tf.not_equal(ids, self.padding_id)
         s = tf.cast(s, tf.int32)
@@ -521,6 +541,12 @@ class BiLstmMultiTagsClassifier(ModelMultiTagsClassifier):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        if embedding_layer.init_embeddings is not None:
+            embedding_var = tf.trainable_variables()[0]
+            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
+            self.init_assign_ops = {embedding_var: assign_op}
+        else:
+            self.init_assign_ops = {}
 
     def _initialize_encoder_graph(self):
 
@@ -624,8 +650,6 @@ class BiLstmMultiTagsClassifier(ModelMultiTagsClassifier):
                 h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
                 self.h_final = self.normalize_2d(h_final)
 
-                # todo: can add dropout before inputting to MLP. normalization can be removed. ?!
-
     def _find_sequence_length(self, ids):
         s = tf.not_equal(ids, self.padding_id)
         s = tf.cast(s, tf.int32)
@@ -652,6 +676,12 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        if embedding_layer.init_embeddings is not None:
+            embedding_var = tf.trainable_variables()[0]
+            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
+            self.init_assign_ops = {embedding_var: assign_op}
+        else:
+            self.init_assign_ops = {}
 
     def _initialize_encoder_graph(self):
 
@@ -769,8 +799,6 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
                 h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
                 self.h_final = self.normalize_2d(h_final)
 
-                # todo: can add dropout before inputting to MLP. normalization can be removed. ?!
-
 
 class GruMultiTagsClassifier(ModelMultiTagsClassifier):
 
@@ -782,6 +810,12 @@ class GruMultiTagsClassifier(ModelMultiTagsClassifier):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        if embedding_layer.init_embeddings is not None:
+            embedding_var = tf.trainable_variables()[0]
+            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
+            self.init_assign_ops = {embedding_var: assign_op}
+        else:
+            self.init_assign_ops = {}
 
     def _initialize_encoder_graph(self):
 
@@ -858,8 +892,6 @@ class GruMultiTagsClassifier(ModelMultiTagsClassifier):
                 h_final = (self.t_state + self.b_state) * 0.5
                 h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
                 self.h_final = self.normalize_2d(h_final)
-
-                # todo: can add dropout before inputting to MLP. normalization can be removed. ?!
 
     def _find_sequence_length(self, ids):
         s = tf.not_equal(ids, self.padding_id)

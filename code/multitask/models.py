@@ -70,7 +70,6 @@ class ModelQRTP(object):
 
         with tf.name_scope('TpLoss'):
             x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
-            # self.loss_tp = tf.reduce_sum(x_entropy, name='cross_entropy')
             if self.args.reduce == "mean":
                 self.loss_tp = tf.reduce_mean(x_entropy, name='cross_entropy')
             else:
@@ -207,7 +206,7 @@ class ModelQRTP(object):
         train_summary_writer.add_summary(_summary, _step)
         return _step, _loss_qr, _loss_tp, _cost
 
-    def train_model(self, train_batches, dev=None, test=None, assign_ops=None):
+    def train_model(self, train_batches, dev=None, test=None):
         with tf.Session() as sess:
 
             result_table_qr = PrettyTable(
@@ -228,16 +227,26 @@ class ModelQRTP(object):
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
-            #todo
-            optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
+            if self.args.optimizer == "adam":
+                optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
+            elif self.args.optimizer == "adagrad":
+                optimizer = tf.train.AdagradOptimizer(self.args.learning_rate)
+            else:
+                optimizer = tf.train.GradientDescentOptimizer(self.args.learning_rate)
+            # todo: two different optimizers, l2_reg, learning_rates
             grads_and_vars = optimizer.compute_gradients(self.cost)
             train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
 
             sess.run(tf.global_variables_initializer())
-            if assign_ops:
+            emb = sess.run(self.embeddings)
+            print '\nemb {}\n'.format(emb[10][0:10])
+
+            if self.init_assign_ops != {}:
                 print 'assigning trained values ...\n'
-                sess.run(assign_ops)
-                del assign_ops
+                sess.run(self.init_assign_ops)
+                emb = sess.run(self.embeddings)
+                print '\nemb {}\n'.format(emb[10][0:10])
+                self.init_assign_ops = {}
 
             if self.args.save_dir != "":
                 print("Writing to {}\n".format(self.args.save_dir))
@@ -320,6 +329,10 @@ class ModelQRTP(object):
 
                     if i % 10 == 0:
                         say("\r{}/{}".format(i, N))
+                    if self.args.testing:
+                        print 'labels in batch: ', np.sum(np.sum(train_batches[i][3], 0) > 0)
+                        emb = sess.run(self.embeddings)
+                        print '\nemb {}\n'.format(emb[10][0:10])
 
                     if i == N-1:  # EVAL
                         dev_tp_loss = 0
@@ -431,17 +444,25 @@ class ModelQRTP(object):
         assign_ops = {}
         with gzip.open(path) as fin:
             data = pickle.load(fin)
+            assert self.args.hidden_dim == data["args"].hidden_dim, 'you are trying to load model with {} hid-dim, '\
+                'while your model has {} hid dim'.format(data["args"].hidden_dim, self.args.hidden_dim)
             params_values = data['params_values']
             graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
                 if param_name in self.params:
                     print param_name, ' is in my dict'
-                    variable = graph.get_tensor_by_name(param_name)
-                    assign_op = tf.assign(variable, param_value)
-                    assign_ops[param_name] = assign_op
+                    try:
+                        variable = graph.get_tensor_by_name(param_name)
+                        assign_op = tf.assign(variable, param_value)
+                        assign_ops[param_name] = assign_op
+                    except:
+                        raise Exception("{} not found in my graph. you are probably loading weights from a model "
+                                        "trained on different amount of outputs-tags. also set use_embeddings to 1".
+                                        format(param_name))
+                        # note: use_embeddings 0 is causing error for unknown reason but anyway here we reset embeddings
+                        # with the loaded ones
                 else:
                     print param_name, ' is not in my dict'
-        print '\n'
         return assign_ops
 
     def load_trained_vars(self, path):
@@ -450,7 +471,9 @@ class ModelQRTP(object):
         assign_ops = {}
         with gzip.open(path) as fin:
             data = pickle.load(fin)
-            assert self.args.hidden_dim == data["args"].hidden_dim
+            print("WARNING: hid dim ({}) != pre trained model hid dim ({}). Use {} instead.\n".format(
+                self.args.hidden_dim, data["args"].hidden_dim, data["args"].hidden_dim
+            ))
             params_values = data['params_values']
             graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
@@ -468,7 +491,9 @@ class ModelQRTP(object):
         sess.run(tf.global_variables_initializer())
         print 'assigning trained values ...\n'
         for param_name, param_assign_op in assign_ops.iteritems():
+            print 'assigning values in ', param_name
             sess.run(param_assign_op)
+        self.init_assign_ops = {}  # to avoid reassigning embeddings if train
 
     def num_parameters(self):
         total_parameters = 0
@@ -492,6 +517,12 @@ class LstmQRTP(ModelQRTP):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        if embedding_layer.init_embeddings is not None:
+            embedding_var = tf.trainable_variables()[0]
+            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
+            self.init_assign_ops = {embedding_var: assign_op}
+        else:
+            self.init_assign_ops = {}
 
     def _initialize_encoder_graph(self):
 
@@ -593,6 +624,12 @@ class BiLstmQRTP(ModelQRTP):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        if embedding_layer.init_embeddings is not None:
+            embedding_var = tf.trainable_variables()[0]
+            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
+            self.init_assign_ops = {embedding_var: assign_op}
+        else:
+            self.init_assign_ops = {}
 
     def _initialize_encoder_graph(self):
 
@@ -716,6 +753,12 @@ class CnnQRTP(ModelQRTP):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        if embedding_layer.init_embeddings is not None:
+            embedding_var = tf.trainable_variables()[0]
+            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
+            self.init_assign_ops = {embedding_var: assign_op}
+        else:
+            self.init_assign_ops = {}
 
     def _initialize_encoder_graph(self):
 
@@ -828,6 +871,12 @@ class GruQRTP(ModelQRTP):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        if embedding_layer.init_embeddings is not None:
+            embedding_var = tf.trainable_variables()[0]
+            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
+            self.init_assign_ops = {embedding_var: assign_op}
+        else:
+            self.init_assign_ops = {}
 
     def _initialize_encoder_graph(self):
 

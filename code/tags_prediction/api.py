@@ -1,8 +1,8 @@
 import argparse
 import myio
 import sys
-from qr.myio import say, create_embedding_layer
-from utils import load_embedding_iterator, read_df
+from qr.myio import say
+from utils import load_embedding_iterator, read_df, create_embedding_layer
 import numpy as np
 from evaluation import Evaluation
 import pickle
@@ -22,7 +22,8 @@ class TPAPI:
         elif layer.lower() == "gru":
             from models import GruMultiTagsClassifier as Model
 
-        # model = Model(args=None, embedding_layer=embedding_layer, output_dim=output_dim, weights=weights)
+        # weights = myio.create_idf_weights(corpus_path, embedding_layer) # todo
+
         model = Model(args=None, embedding_layer=emb_layer, output_dim=output_dim)
 
         model.load_n_set_model(model_path, session)
@@ -110,10 +111,9 @@ if __name__ == '__main__':
 
     raw_corpus = myio.read_corpus(args.corpus_w_tags, with_tags=True)
     embedding_layer = create_embedding_layer(
-        raw_corpus,
         n_d=10,
-        cut_off=1,
-        embs=load_embedding_iterator(args.embeddings)
+        embs=load_embedding_iterator(args.embeddings),
+        only_words=False
     )
 
     with tf.Session() as sess:

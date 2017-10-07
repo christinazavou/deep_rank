@@ -2,7 +2,7 @@ import argparse
 import myio
 import sys
 from myio import say
-from utils import load_embedding_iterator
+from utils import load_embedding_iterator, create_embedding_layer
 import numpy as np
 from evaluation import Evaluation
 import tensorflow as tf
@@ -12,13 +12,12 @@ class QRAPI:
 
     def __init__(self, model_path, corpus_path, emb_path, session, layer='lstm'):
         raw_corpus = myio.read_corpus(corpus_path)
-        embedding_layer = myio.create_embedding_layer(
-                    raw_corpus,
-                    n_d = 10,
-                    cut_off = 1,
-                    embs = load_embedding_iterator(emb_path)
-                )
-        # weights = myio.create_idf_weights(corpus_path, embedding_layer)
+        embedding_layer = create_embedding_layer(
+            n_d=10,
+            embs=load_embedding_iterator(args.embeddings),
+            only_words=False
+        )
+        # weights = myio.create_idf_weights(corpus_path, embedding_layer) # todo
         say("vocab size={}, corpus size={}\n".format(
                 embedding_layer.n_V,
                 len(raw_corpus)
@@ -33,8 +32,7 @@ class QRAPI:
         elif layer.lower() == "gru":
             from models import GruQA as Model
 
-        # model = Model(args=None, embedding_layer=embedding_layer,
-        #             weights=weights)
+        # model = Model(args=None, embedding_layer=embedding_layer, weights=weights)
         model = Model(args=None, embedding_layer=embedding_layer)
 
         model.load_n_set_model(model_path, session)

@@ -25,7 +25,8 @@ def main():
     embedding_layer = create_embedding_layer(
         n_d=240,
         embs=load_embedding_iterator(args.embeddings),
-        emb_words=False if args.use_embeddings else None
+        only_words=False if args.use_embeddings else True
+        # only_words will take the words from embedding file and make random initial embeddings
     )
 
     ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, label_tags, max_len=args.max_seq_len)
@@ -61,15 +62,12 @@ def main():
 
     print 'total params: ', model.num_parameters()
 
-    assert not (args.load_pre_trained_part != "" and args.load_trained_vars != "")
-    if args.load_trained_vars:
-        assign_ops = model.load_trained_vars(args.load_trained_vars)
-    elif args.load_pre_trained_part:
-        assign_ops = model.load_pre_trained_part(args.load_pre_trained_part)
-    else:
-        assign_ops = None
+    if args.load_pre_trained_part:
+        # need to remove the old assigns to embeddings
+        model.init_assign_ops = model.load_pre_trained_part(args.load_pre_trained_part)
+    print '\nmodel init_assign_ops: {}\n'.format(model.init_assign_ops)
 
-    model.train_model(train, dev=dev, test=test, assign_ops=assign_ops)
+    model.train_model(train, dev=dev, test=test)
 
 
 if __name__ == '__main__':
@@ -79,6 +77,8 @@ if __name__ == '__main__':
     argparser.add_argument("--df_path", type=str)
     argparser.add_argument("--tags_file", type=str)
     argparser.add_argument("--embeddings", type=str, default="")
+    argparser.add_argument("--load_pre_trained_part", type=str, default="")
+    argparser.add_argument("--testing", type=int, default=0)
 
     argparser.add_argument("--use_embeddings", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
@@ -100,12 +100,8 @@ if __name__ == '__main__':
     argparser.add_argument("--concat", type=int, default=0)
     argparser.add_argument("--loss", type=str, default="")
     argparser.add_argument("--reduce", type=str, default="mean")
-    argparser.add_argument("--testing", type=int, default=0)
     argparser.add_argument("--threshold", type=float, default=0.5)
     argparser.add_argument("--performance", type=str, default="R@10")  # P@5, R@10
-
-    argparser.add_argument("--load_trained_vars", type=str, default="")
-    argparser.add_argument("--load_pre_trained_part", type=str, default="")
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))
@@ -114,7 +110,6 @@ if __name__ == '__main__':
     argparser.add_argument("--save_dir", type=str, default=out_dir)
 
     args = argparser.parse_args()
-    print args
-    print
+    print '\n{}\n'.format(args)
     main()
 
