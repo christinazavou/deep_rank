@@ -90,7 +90,9 @@ if __name__ == "__main__":
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)
-
+    # average 1 = mean pooling for any layer
+    # average 0 = last pooling for RNNs max pooling for CNN
+    # average 2 = max pooling for RNNs
     argparser.add_argument("--average", type=int, default=0)
     argparser.add_argument("--batch_size", type=int, default=40)
     argparser.add_argument("--optimizer", type=str, default="adam")

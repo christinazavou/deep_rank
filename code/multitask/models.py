@@ -610,10 +610,12 @@ class LstmQRTP(ModelQRTP):
             if self.args.normalize:
                 self.t_states_series = self.normalize_3d(self.t_states_series)
 
-            if self.args.average:
+            if self.args.average == 1:
                 self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
-            else:
+            elif self.args.average == 0:
                 self.t_state = self.t_current_state[0][1]
+            else:
+                self.t_state = tf.reduce_max(self.t_states_series, 1)
 
         with tf.name_scope('bodies_output'):
 
@@ -627,10 +629,12 @@ class LstmQRTP(ModelQRTP):
             if self.args.normalize:
                 self.b_states_series = self.normalize_3d(self.b_states_series)
 
-            if self.args.average:
+            if self.args.average == 1:
                 self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
-            else:
+            elif self.args.average == 0:
                 self.b_state = self.b_current_state[0][1]
+            else:
+                self.b_state = tf.reduce_max(self.b_states_series, 1)
 
         with tf.name_scope('outputs'):
             with tf.name_scope('encodings'):
@@ -721,12 +725,15 @@ class BiLstmQRTP(ModelQRTP):
                 forw_t_outputs = self.normalize_3d(forw_t_outputs)
                 back_t_outputs = self.normalize_3d(back_t_outputs)
 
-            if self.args.average:
+            if self.args.average == 1:
                 forw_t_state = self.average_without_padding(forw_t_outputs, self.titles_words_ids_placeholder)
                 back_t_state = self.average_without_padding(back_t_outputs, self.titles_words_ids_placeholder)
-            else:
+            elif self.args.average == 0:
                 forw_t_state = forw_t_state[1]  # (this is last output based on seq len)
                 back_t_state = back_t_state[1]  # (same BUT in backwards => first output!)
+            else:
+                forw_t_state = tf.reduce_max(forw_t_outputs, 1)
+                back_t_state = tf.reduce_max(back_t_outputs, 1)
 
             if self.args.concat:
                 self.t_state_vec = tf.concat([forw_t_state, back_t_state], axis=1)
@@ -749,12 +756,15 @@ class BiLstmQRTP(ModelQRTP):
                 forw_b_outputs = self.normalize_3d(forw_b_outputs)
                 back_b_outputs = self.normalize_3d(back_b_outputs)
 
-            if self.args.average:
+            if self.args.average == 1:
                 forw_b_state = self.average_without_padding(forw_b_outputs, self.bodies_words_ids_placeholder)
                 back_b_state = self.average_without_padding(back_b_outputs, self.bodies_words_ids_placeholder)
-            else:
+            elif self.args.average == 0:
                 forw_b_state = forw_b_state[1]  # (this is last output based on seq len)
                 back_b_state = back_b_state[1]  # (same BUT in backwards => first output!)
+            else:
+                forw_b_state = tf.reduce_max(forw_b_outputs, 1)
+                back_b_state = tf.reduce_max(back_b_outputs, 1)
 
             if self.args.concat:
                 self.b_state_vec = tf.concat([forw_b_state, back_b_state], axis=1)
@@ -964,10 +974,12 @@ class GruQRTP(ModelQRTP):
             if self.args.normalize:
                 self.t_states_series = self.normalize_3d(self.t_states_series)
 
-            if self.args.average:
+            if self.args.average == 1:
                 self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
-            else:
+            elif self.args.average == 0:
                 self.t_state = self.t_current_state[0]
+            else:
+                self.t_state = tf.reduce_max(self.t_states_series, 1)
 
         with tf.name_scope('bodies_output'):
             self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
@@ -980,10 +992,12 @@ class GruQRTP(ModelQRTP):
             if self.args.normalize:
                 self.b_states_series = self.normalize_3d(self.b_states_series)
 
-            if self.args.average:
+            if self.args.average == 1:
                 self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
-            else:
+            elif self.args.average == 0:
                 self.b_state = self.b_current_state[0]
+            else:
+                self.b_state = tf.reduce_max(self.b_states_series, 1)
 
         with tf.name_scope('outputs'):
             # batch * d
