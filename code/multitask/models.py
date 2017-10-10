@@ -70,15 +70,8 @@ class ModelQRTP(object):
 
         with tf.name_scope('TpLoss'):
             x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
-            if self.args.reduce == "mean":
-                self.loss_tp = tf.reduce_mean(x_entropy, name='cross_entropy')
-            else:
-                self.loss_tp = tf.reduce_sum(x_entropy, name='cross_entropy')
+            self.loss_tp = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
             self.loss_tp *= self.args.tp_mul if 'tp_mul' in self.args else 1.  # version compatibility
-
-            _mask = tf.expand_dims(tf.cast(tf.greater(tf.reduce_sum(self.target, 0), 0), tf.float32), 1)
-            _aux_loss = tf.reduce_mean(tf.matmul(x_entropy, _mask))
-            self._loss_tp_aux = _aux_loss
 
     def _initialize_cost_function(self):
         with tf.name_scope('cost'):
@@ -167,9 +160,9 @@ class ModelQRTP(object):
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
-        x_entropy = (targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9))
-        # tp_loss = -np.sum(x_entropy)
-        tp_loss = -np.mean(x_entropy)
+        # outputs are passed through sigmoid, thus they lie in (0,1)
+        x_entropy = targets * (-np.log(outputs)) + (1.0 - targets) * (-np.log(1.0 - outputs))
+        tp_loss = np.mean(np.sum(x_entropy, 1))
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []
@@ -191,10 +184,10 @@ class ModelQRTP(object):
                 ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10)]
         return MAP, MRR, P1, P5, qr_loss, tp_loss, tuple(results)
 
-    def train_batch(self, batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
+    def train_batch(self, batch, train_op, global_step, sess):
         titles, bodies, pairs, tags = batch
-        _, _step, _loss_qr, _loss_tp, _cost, _summary = sess.run(
-            [train_op, global_step, self.loss_qr, self.loss_tp, self.cost, train_summary_op],
+        _, _step, _loss_qr, _loss_tp, _cost = sess.run(
+            [train_op, global_step, self.loss_qr, self.loss_tp, self.cost],
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
@@ -203,7 +196,6 @@ class ModelQRTP(object):
                 self.dropout_prob: np.float32(self.args.dropout),
             }
         )
-        train_summary_writer.add_summary(_summary, _step)
         return _step, _loss_qr, _loss_tp, _cost
 
     def train_model(self, train_batches, dev=None, test=None):
@@ -221,7 +213,7 @@ class ModelQRTP(object):
             )
 
             dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10 = 0, 0, 0, 0, 0, 0, 0, 0
-            test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, testRAT10 = 0, 0, 0, 0, 0, 0, 0, 0
+            test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10 = 0, 0, 0, 0, 0, 0, 0, 0
 
             best_dev_performance = -1
 
@@ -251,14 +243,18 @@ class ModelQRTP(object):
             if self.args.save_dir != "":
                 print("Writing to {}\n".format(self.args.save_dir))
 
-            loss_qr_summary = tf.summary.scalar("loss_qr", self.loss_qr)
-            loss_tp_summary = tf.summary.scalar("loss_tp", self.loss_tp)
-            cost_summary = tf.summary.scalar("cost", self.cost)
+            # TRAIN LOSS
+            train_loss_qr_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "train", "QR"), sess.graph
+            )
+            train_loss_tp_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "train", "TP"), sess.graph
+            )
+            train_cost_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "train"), sess.graph
+            )
 
-            train_summary_op = tf.summary.merge([loss_qr_summary, loss_tp_summary, cost_summary])
-            train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
-            train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
-
+            # VARIABLE NORM
             p_norm_summaries = {}
             p_norm_placeholders = {}
             for param_name, param_norm in self.get_pnorm_stat(sess).iteritems():
@@ -268,36 +264,49 @@ class ModelQRTP(object):
             p_norm_summary_dir = os.path.join(self.args.save_dir, "summaries", "p_norm")
             p_norm_summary_writer = tf.summary.FileWriter(p_norm_summary_dir, sess.graph)
 
-            # DEV for QR
-            dev_loss_qr = tf.placeholder(tf.float32)
-            dev_map = tf.placeholder(tf.float32)
-            dev_mrr = tf.placeholder(tf.float32)
-            dev_loss_qr_summary = tf.summary.scalar("dev_loss_qr", dev_loss_qr)
-            dev_map_summary = tf.summary.scalar("dev_map", dev_map)
-            dev_mrr_summary = tf.summary.scalar("dev_mrr", dev_mrr)
+            # DEV LOSS
+            dev_loss_qr_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR"), sess.graph
+            )
+            dev_loss_tp_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP"), sess.graph
+            )
+
+            # DEV evaluation for QR
+            dev_eval_qr_writer1 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "MAP"), sess.graph
+            )
+            dev_eval_qr_writer2 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "MRR"), sess.graph
+            )
+            dev_eval_qr_writer3 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "Pat1"), sess.graph
+            )
+            dev_eval_qr_writer4 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "Pat5"), sess.graph
+            )
 
             # DEV for TP
-            dev_loss_tp = tf.placeholder(tf.float32)
-            dev_loss_tp_summary = tf.summary.scalar("dev_loss_tp", dev_loss_tp)
-
-            dev_pat5 = tf.placeholder(tf.float32)
-            dev_pat5_summary = tf.summary.scalar("dev_pat5", dev_pat5)
-            dev_pat10 = tf.placeholder(tf.float32)
-            dev_pat10_summary = tf.summary.scalar("dev_pat10", dev_pat10)
-            dev_rat5 = tf.placeholder(tf.float32)
-            dev_rat5_summary = tf.summary.scalar("dev_rat5", dev_rat5)
-            dev_rat10 = tf.placeholder(tf.float32)
-            dev_rat10_summary = tf.summary.scalar("dev_rat10", dev_rat10)
-
-            dev_summary_op = tf.summary.merge(
-                [dev_loss_qr_summary,
-                 dev_map_summary, dev_mrr_summary,
-                 dev_loss_tp_summary,
-                 dev_pat5_summary, dev_pat10_summary, dev_rat5_summary, dev_rat10_summary,
-                 ]
+            dev_eval_tp_writer1 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Rat5"), sess.graph
             )
-            dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
-            dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
+            dev_eval_tp_writer2 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Rat10"), sess.graph
+            )
+            dev_eval_tp_writer3 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Pat5"), sess.graph
+            )
+            dev_eval_tp_writer4 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Pat10"), sess.graph
+            )
+
+            loss = tf.placeholder(tf.float32)
+            loss_summary = tf.summary.scalar("loss", loss)
+            dev_eval = tf.placeholder(tf.float32)
+            dev_qr_summary = tf.summary.scalar("QR_evaluation", dev_eval)
+            dev_tp_summary = tf.summary.scalar("TP_evaluation", dev_eval)
+            cost = tf.placeholder(tf.float32)
+            cost_summary = tf.summary.scalar("cost", cost)
 
             if self.args.save_dir != "":
                 checkpoint_dir = os.path.join(self.args.save_dir, "checkpoints")
@@ -320,8 +329,18 @@ class ModelQRTP(object):
 
                 for i in xrange(N):
                     cur_step, cur_loss_qr, cur_loss_tp, cur_cost = self.train_batch(
-                        train_batches[i], train_op, global_step, train_summary_op, train_summary_writer, sess
+                        train_batches[i], train_op, global_step, sess
                     )
+
+                    summary = sess.run(loss_summary, {loss: cur_loss_qr})
+                    train_loss_qr_writer.add_summary(summary, cur_step)
+                    train_loss_qr_writer.flush()
+                    summary = sess.run(loss_summary, {loss: cur_loss_tp})
+                    train_loss_tp_writer.add_summary(summary, cur_step)
+                    train_loss_tp_writer.flush()
+                    summary = sess.run(cost_summary, {cost: cur_cost})
+                    train_cost_writer.add_summary(summary, cur_step)
+                    train_cost_writer.flush()
 
                     train_loss_qr += cur_loss_qr
                     train_loss_tp += cur_loss_tp
@@ -331,8 +350,6 @@ class ModelQRTP(object):
                         say("\r{}/{}".format(i, N))
                     if self.args.testing:
                         print 'labels in batch: ', np.sum(np.sum(train_batches[i][3], 0) > 0)
-                        emb = sess.run(self.embeddings)
-                        print '\nemb {}\n'.format(emb[10][0:10])
 
                     if i == N-1:  # EVAL
                         dev_tp_loss = 0
@@ -343,14 +360,38 @@ class ModelQRTP(object):
                                 dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10
                             ) = self.evaluate(dev, sess)
 
-                            _dev_sum = sess.run(
-                                dev_summary_op,
-                                {dev_loss_qr: dev_qr_loss, dev_map: dev_MAP, dev_mrr: dev_MRR,
-                                 dev_loss_tp: dev_tp_loss,
-                                 dev_pat5: dev_PAT5, dev_pat10: dev_PAT10, dev_rat5: dev_RAT5, dev_rat10: dev_RAT10
-                                 },
-                            )
-                            dev_summary_writer.add_summary(_dev_sum, cur_step)
+                            summary = sess.run(loss_summary, {loss: dev_qr_loss})
+                            dev_loss_qr_writer.add_summary(summary, cur_step)
+                            dev_loss_qr_writer.flush()
+                            summary = sess.run(loss_summary, {loss: dev_tp_loss})
+                            dev_loss_tp_writer.add_summary(summary, cur_step)
+                            dev_loss_tp_writer.flush()
+
+                            summary = sess.run(dev_qr_summary, {dev_eval: dev_MAP})
+                            dev_eval_qr_writer1.add_summary(summary, cur_step)
+                            dev_eval_qr_writer1.flush()
+                            summary = sess.run(dev_qr_summary, {dev_eval: dev_MRR})
+                            dev_eval_qr_writer2.add_summary(summary, cur_step)
+                            dev_eval_qr_writer2.flush()
+                            summary = sess.run(dev_qr_summary, {dev_eval: dev_P1})
+                            dev_eval_qr_writer3.add_summary(summary, cur_step)
+                            dev_eval_qr_writer3.flush()
+                            summary = sess.run(dev_qr_summary, {dev_eval: dev_P5})
+                            dev_eval_qr_writer4.add_summary(summary, cur_step)
+                            dev_eval_qr_writer4.flush()
+
+                            summary = sess.run(dev_tp_summary, {dev_eval: dev_RAT5})
+                            dev_eval_tp_writer1.add_summary(summary, cur_step)
+                            dev_eval_tp_writer1.flush()
+                            summary = sess.run(dev_tp_summary, {dev_eval: dev_RAT10})
+                            dev_eval_tp_writer2.add_summary(summary, cur_step)
+                            dev_eval_tp_writer2.flush()
+                            summary = sess.run(dev_tp_summary, {dev_eval: dev_PAT5})
+                            dev_eval_tp_writer3.add_summary(summary, cur_step)
+                            dev_eval_tp_writer3.flush()
+                            summary = sess.run(dev_tp_summary, {dev_eval: dev_PAT10})
+                            dev_eval_tp_writer4.add_summary(summary, cur_step)
+                            dev_eval_tp_writer4.flush()
 
                             feed_dict = {}
                             for param_name, param_norm in self.get_pnorm_stat(sess).iteritems():

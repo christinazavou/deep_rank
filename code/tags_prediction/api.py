@@ -7,6 +7,8 @@ import numpy as np
 from evaluation import Evaluation
 import pickle
 import tensorflow as tf
+from evaluation import print_matrix
+import os
 
 
 class TPAPI:
@@ -36,7 +38,7 @@ class TPAPI:
         def predict_func(titles, bodies, cur_sess):
 
             outputs, predictions = cur_sess.run(
-                [self.model.output, self.model.prediction],
+                [self.model.act_output, self.model.prediction],
                 feed_dict={
                     self.model.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                     self.model.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
@@ -48,7 +50,7 @@ class TPAPI:
         self.predict_func = predict_func
         say("Prediction function compiled\n")
 
-    def evaluate(self, data, session):
+    def evaluate(self, data, tag_names, folder, session):
 
         eval_func = self.predict_func
         outputs, predictions, targets = [], [], []
@@ -62,10 +64,10 @@ class TPAPI:
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
-        ev = Evaluation(outputs, predictions, targets)
-        print 'label_ranking_average_precision_score: ', round(ev.lr_ap_score(), 4)
-        print 'label_ranking_loss: ', round(ev.lr_loss(), 4)
-        print 'coverage_error: ', round(ev.cov_error(), 4)
+        # ev = Evaluation(outputs, predictions, targets)
+        # print 'label_ranking_average_precision_score: ', round(ev.lr_ap_score(), 4)
+        # print 'label_ranking_loss: ', round(ev.lr_loss(), 4)
+        # print 'coverage_error: ', round(ev.cov_error(), 4)
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []
@@ -90,6 +92,11 @@ class TPAPI:
             ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
             ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10))
 
+        mat = ev.ConfusionMatrix(5)
+        print_matrix(mat, tag_names, 'Confusion:True Tag on x-axis, False Tag on y-axis', folder)
+        mat = ev.CorrelationMatrix()
+        print_matrix(mat, tag_names, 'Correlation: True Tag on both axis', folder)
+
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
@@ -100,6 +107,7 @@ if __name__ == '__main__':
     argparser.add_argument("--model", type=str)
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--max_seq_len", type=int, default=100)
+    argparser.add_argument("--out_dir", type=str)
 
     args = argparser.parse_args()
     print '\n', args, '\n'
@@ -136,9 +144,9 @@ if __name__ == '__main__':
         eval_batches = myio.create_batches(df, ids_corpus, 'dev', myqrapi.model.args.batch_size, padding_id)
         print 'DEV evaluation:'
         print '{} batches.'.format(len(eval_batches))
-        myqrapi.evaluate(eval_batches, sess)
+        myqrapi.evaluate(eval_batches, label_tags, os.path.join(args.out_dir, 'dev') if args.out_dir else None, sess)
 
         eval_batches = myio.create_batches(df, ids_corpus, 'test', myqrapi.model.args.batch_size, padding_id)
         print 'TEST evaluation:'
         print '{} batches.'.format(len(eval_batches))
-        myqrapi.evaluate(eval_batches, sess)
+        myqrapi.evaluate(eval_batches, label_tags, os.path.join(args.out_dir, 'test') if args.out_dir else None, sess)

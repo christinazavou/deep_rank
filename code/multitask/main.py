@@ -103,11 +103,10 @@ if __name__ == "__main__":
     argparser.add_argument("--normalize", type=int, default=1)
     argparser.add_argument("--reweight", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")
-    argparser.add_argument("--reduce", type=str, default="mean")
     argparser.add_argument("--concat", type=int, default=0)
 
     argparser.add_argument("--threshold", type=float, default=0.5)
-    argparser.add_argument("--performance", type=str, default="dev_mrr")  # dev_mrr p_macro, P@3, R@3
+    argparser.add_argument("--performance", type=str, default="dev_mrr")  # dev_mrr p_macro, P@5, R@10
     argparser.add_argument("--qr_weight", type=float, default=1.)
     argparser.add_argument("--tp_weight", type=float, default=1.)
     argparser.add_argument("--qr_mul", type=float, default=1.)  # 1 or 0.5 or 0.05

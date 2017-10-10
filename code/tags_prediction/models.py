@@ -69,15 +69,12 @@ class ModelMultiTagsClassifier(object):
 
             with tf.name_scope('cost'):
                 with tf.name_scope('loss'):
-
+                    # Entropy measures the "information" or "uncertainty" of a random variable. When you are using base
+                    #  2, it is measured in bits; and there can be more than one bit of information in a variable. if
+                    # x-entropy == 1.15 it means that under the compression the model does on the data, we carry about
+                    # 1.15 bits of information per sample (need 1.5 bits to represent a sample), on average."""
                     x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
-                    if self.args.reduce == "mean":
-                        self.loss = tf.reduce_mean(x_entropy, name='cross_entropy')
-                    else:
-                        self.loss = tf.reduce_sum(x_entropy, name='cross_entropy')
-                    _mask = tf.expand_dims(tf.cast(tf.greater(tf.reduce_sum(self.target, 0), 0), tf.float32), 1)
-                    _aux_loss = tf.reduce_mean(tf.matmul(x_entropy, _mask))
-                    self._aux_loss = _aux_loss
+                    self.loss = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -85,10 +82,7 @@ class ModelMultiTagsClassifier(object):
                         l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
                     self.l2_reg = l2_reg
 
-                if self.args.loss == 'subset':
-                    self.cost = self._aux_loss + self.l2_reg
-                else:
-                    self.cost = self.loss + self.l2_reg
+                self.cost = self.loss + self.l2_reg
 
     def eval_batch(self, titles, bodies, sess):
         outputs, predictions = sess.run(
@@ -114,12 +108,9 @@ class ModelMultiTagsClassifier(object):
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
-        x_entropy = (targets * np.log(outputs + 1e-9)) + ((1 - targets) * np.log(1 - outputs + 1e-9))
-        loss = -np.mean(x_entropy)
-
-        _mask = np.expand_dims((np.sum(targets, 0) > 0).astype(np.float32), 1)
-        _aux_loss = np.mean(np.matmul(x_entropy, _mask))
-        _loss_aux = _aux_loss
+        # outputs are passed through sigmoid, thus they lie in (0,1)
+        x_entropy = targets * (-np.log(outputs)) + (1.0 - targets) * (-np.log(1.0 - outputs))
+        loss = np.mean(np.sum(x_entropy, 1))
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []
@@ -140,11 +131,11 @@ class ModelMultiTagsClassifier(object):
         ev = Evaluation(outputs, predictions, targets)
         results = [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
                    ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10)]
-        return loss, _loss_aux, tuple(results)
+        return loss, tuple(results)
 
-    def train_batch(self, titles, bodies, y_batch, train_op, global_step, train_summary_op, train_summary_writer, sess):
-        _, _step, _loss, _aux_loss, _cost, _summary = sess.run(
-            [train_op, global_step, self.loss, self._aux_loss, self.cost, train_summary_op],
+    def train_batch(self, titles, bodies, y_batch, train_op, global_step, sess):
+        _, _step, _loss, _cost = sess.run(
+            [train_op, global_step, self.loss, self.cost],
             feed_dict={
                 self.target: y_batch,
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
@@ -152,8 +143,7 @@ class ModelMultiTagsClassifier(object):
                 self.dropout_prob: np.float32(self.args.dropout),
             }
         )
-        train_summary_writer.add_summary(_summary, _step)
-        return _step, _loss, _aux_loss, _cost
+        return _step, _loss, _cost
 
     def train_model(self, train_batches, dev=None, test=None):
         with tf.Session() as sess:
@@ -193,14 +183,15 @@ class ModelMultiTagsClassifier(object):
             if self.args.save_dir != "":
                 print("Writing to {}\n".format(self.args.save_dir))
 
-            # Train Summaries
-            loss_summary = tf.summary.scalar("loss", self.loss)
-            cost_summary = tf.summary.scalar("cost", self.cost)
-            aux_loss_summary = tf.summary.scalar("aux_loss", self._aux_loss)
-            train_summary_op = tf.summary.merge([loss_summary, cost_summary, aux_loss_summary])
-            train_summary_dir = os.path.join(self.args.save_dir, "summaries", "train")
-            train_summary_writer = tf.summary.FileWriter(train_summary_dir, sess.graph)
+            # TRAIN LOSS
+            train_loss_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "train", "loss"), sess.graph
+            )
+            train_cost_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "train", "cost"), sess.graph
+            )
 
+            # VARIABLE NORM
             p_norm_summaries = {}
             p_norm_placeholders = {}
             for param_name, param_norm in self.get_pnorm_stat(sess).iteritems():
@@ -210,23 +201,29 @@ class ModelMultiTagsClassifier(object):
             p_norm_summary_dir = os.path.join(self.args.save_dir, "summaries", "p_norm")
             p_norm_summary_writer = tf.summary.FileWriter(p_norm_summary_dir, sess.graph)
 
-            if dev:
-                # Dev Summaries
-                dev_pat5 = tf.placeholder(tf.float32)
-                dev_rat5 = tf.placeholder(tf.float32)
-                dev_pat5_summary = tf.summary.scalar("dev_pat5", dev_pat5)
-                dev_rat5_summary = tf.summary.scalar("dev_rat5", dev_rat5)
+            # DEV LOSS & EVAL
+            dev_loss_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "loss"), sess.graph
+            )
+            dev_eval_writer1 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "Rat5"), sess.graph
+            )
+            dev_eval_writer2 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "Rat10"), sess.graph
+            )
+            dev_eval_writer3 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "Pat5"), sess.graph
+            )
+            dev_eval_writer4 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "Pat10"), sess.graph
+            )
 
-                dev_pat10 = tf.placeholder(tf.float32)
-                dev_rat10 = tf.placeholder(tf.float32)
-                dev_pat10_summary = tf.summary.scalar("dev_pat10", dev_pat10)
-                dev_rat10_summary = tf.summary.scalar("dev_rat10", dev_rat10)
-
-                dev_summary_op = tf.summary.merge(
-                    [dev_pat5_summary, dev_rat5_summary, dev_pat10_summary, dev_rat10_summary]
-                )
-                dev_summary_dir = os.path.join(self.args.save_dir, "summaries", "dev")
-                dev_summary_writer = tf.summary.FileWriter(dev_summary_dir, sess.graph)
+            loss = tf.placeholder(tf.float32)
+            loss_summary = tf.summary.scalar("loss", loss)
+            dev_eval = tf.placeholder(tf.float32)
+            dev_summary = tf.summary.scalar("TP_evaluation", dev_eval)
+            cost = tf.placeholder(tf.float32)
+            cost_summary = tf.summary.scalar("cost", cost)
 
             if self.args.save_dir != "":
                 checkpoint_dir = os.path.join(self.args.save_dir, "checkpoints")
@@ -245,24 +242,26 @@ class ModelMultiTagsClassifier(object):
 
                 train_loss = 0.0
                 train_cost = 0.0
-                train_aux_loss = 0.0
 
                 for i in xrange(N):
                     titles_b, bodies_b, tag_labels_b = train_batches[i]
 
                     if i % 10 == 0 and self.args.testing:
                         print 'labels in batch: ', np.sum(np.sum(tag_labels_b, 0) > 0)
-                        emb = sess.run(self.embeddings)
-                        print '\nemb {}\n'.format(emb[10][0:10])
 
-                    cur_step, cur_loss, cur_aux_loss, cur_cost = self.train_batch(
+                    cur_step, cur_loss, cur_cost = self.train_batch(
                         titles_b, bodies_b, tag_labels_b,
-                        train_op, global_step, train_summary_op, train_summary_writer, sess
+                        train_op, global_step, sess
                     )
+
+                    loss_sum, cost_sum = sess.run([loss_summary, cost_summary], {loss: cur_loss, cost: cur_cost})
+                    train_loss_writer.add_summary(loss_sum, cur_step)
+                    train_loss_writer.flush()
+                    train_cost_writer.add_summary(cost_sum, cur_step)
+                    train_cost_writer.flush()
 
                     train_loss += cur_loss
                     train_cost += cur_cost
-                    train_aux_loss += cur_aux_loss
 
                     if i % 10 == 0:
                         myio.say("\r{}/{}".format(i, N))
@@ -271,16 +270,26 @@ class ModelMultiTagsClassifier(object):
                         dev_loss = 0
 
                         if dev:
-                            dev_loss, dev_aux_loss, (
+                            dev_loss, (
                                 dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10
                             ) = self.evaluate(dev, sess)
-                            _dev_sum = sess.run(
-                                dev_summary_op,
-                                {dev_pat5: dev_PAT5, dev_rat5: dev_RAT10,
-                                 dev_pat10: dev_PAT10, dev_rat10: dev_RAT10
-                                 }
-                            )
-                            dev_summary_writer.add_summary(_dev_sum, cur_step)
+
+                            summary = sess.run(loss_summary, {loss: dev_loss})
+                            dev_loss_writer.add_summary(summary, cur_step)
+                            dev_loss_writer.flush()
+
+                            summary = sess.run(dev_summary, {dev_eval: dev_RAT5})
+                            dev_eval_writer1.add_summary(summary, cur_step)
+                            dev_eval_writer1.flush()
+                            summary = sess.run(dev_summary, {dev_eval: dev_RAT10})
+                            dev_eval_writer2.add_summary(summary, cur_step)
+                            dev_eval_writer2.flush()
+                            summary = sess.run(dev_summary, {dev_eval: dev_PAT5})
+                            dev_eval_writer3.add_summary(summary, cur_step)
+                            dev_eval_writer3.flush()
+                            summary = sess.run(dev_summary, {dev_eval: dev_PAT10})
+                            dev_eval_writer4.add_summary(summary, cur_step)
+                            dev_eval_writer4.flush()
 
                             feed_dict = {}
                             for param_name, param_norm in self.get_pnorm_stat(sess).iteritems():
@@ -289,7 +298,7 @@ class ModelMultiTagsClassifier(object):
                             p_norm_summary_writer.add_summary(_p_norm_sum, cur_step)
 
                         if test:
-                            test_loss, test_aux_loss, (
+                            test_loss, (
                                 test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10
                             ) = self.evaluate(test, sess)
 
@@ -320,7 +329,6 @@ class ModelMultiTagsClassifier(object):
                             dev_RAT10 if self.args.performance == "R@10" else dev_PAT5,
                             best_dev_performance
                         ))
-                        myio.say("aux loss : {} {}".format(train_aux_loss / (i+1), dev_aux_loss))
                         myio.say("\n{}\n".format(result_table))
                         myio.say("\tp_norm: {}\n".format(
                             self.get_pnorm_stat(sess)

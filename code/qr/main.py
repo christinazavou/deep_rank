@@ -77,7 +77,6 @@ if __name__ == "__main__":
     argparser.add_argument("--dev", type=str, default="")
     argparser.add_argument("--embeddings", type=str, default="")
     argparser.add_argument("--load_pre_trained_part", type=str, default="")
-    argparser.add_argument("--testing", type=int, default=0)
 
     argparser.add_argument("--use_embeddings", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
