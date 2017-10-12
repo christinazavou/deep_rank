@@ -11,7 +11,8 @@ def main():
     embedding_layer = create_embedding_layer(
         n_d=args.hidden_dim,
         embs=load_embedding_iterator(args.embeddings),
-        only_words=False if args.use_embeddings else True
+        only_words=False if args.use_embeddings else True,
+        trainable=args.trainable
     )
     ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, max_len=args.max_seq_len)
     print("vocab size={}, corpus size={}\n".format(
@@ -79,6 +80,7 @@ if __name__ == "__main__":
     argparser.add_argument("--load_pre_trained_part", type=str, default="")
 
     argparser.add_argument("--use_embeddings", type=int, default=1)
+    argparser.add_argument("--trainable", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)

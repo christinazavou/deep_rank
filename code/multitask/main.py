@@ -14,7 +14,8 @@ def main():
     embedding_layer = create_embedding_layer(
         n_d=240,
         embs=load_embedding_iterator(args.embeddings),
-        only_words=False if args.use_embeddings else True
+        only_words=False if args.use_embeddings else True,
+        trainable=True
     )
     print("vocab size={}, corpus size={}\n".format(embedding_layer.n_V, len(raw_corpus)))
     if args.reweight:
@@ -87,6 +88,7 @@ if __name__ == "__main__":
     argparser.add_argument("--testing", type=int, default=0)
 
     argparser.add_argument("--use_embeddings", type=int, default=1)
+    argparser.add_argument("--trainable", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)

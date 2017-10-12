@@ -22,7 +22,7 @@ class EmbeddingLayer(object):
         fix_init_embs   : whether to fix the initial word vectors loaded from embs
 
     """
-    def __init__(self, n_d, vocab, oov="<unk>", embs=None, fix_init_embs=True):
+    def __init__(self, n_d, vocab, oov="<unk>", embs=None, fix_init_embs=True, trainable=True):
 
         self.init_embeddings = None
         if embs is not None:
@@ -78,7 +78,7 @@ class EmbeddingLayer(object):
         self.n_V = len(self.vocab_map)
         self.n_d = n_d
 
-        self._initialize_params(emb_vals, True)
+        self._initialize_params(emb_vals, trainable)
 
     def _initialize_params(self, init_embeddings, trainable):
         # THIS I THE EMBEDDING LAYER, which takes as input the sequence of word ids

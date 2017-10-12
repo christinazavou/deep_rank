@@ -25,8 +25,9 @@ def main():
     embedding_layer = create_embedding_layer(
         n_d=240,
         embs=load_embedding_iterator(args.embeddings),
-        only_words=False if args.use_embeddings else True
+        only_words=False if args.use_embeddings else True,
         # only_words will take the words from embedding file and make random initial embeddings
+        trainable=args.trainable
     )
 
     ids_corpus = myio.map_corpus(raw_corpus, embedding_layer, label_tags, max_len=args.max_seq_len)
@@ -81,6 +82,7 @@ if __name__ == '__main__':
     argparser.add_argument("--testing", type=int, default=0)
 
     argparser.add_argument("--use_embeddings", type=int, default=1)
+    argparser.add_argument("--trainable", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)
