@@ -20,6 +20,7 @@ class ModelQRTP(object):
         self._initialize_output_graph_tp()
         for param in tf.trainable_variables():
             self.params[param.name] = param
+        self.params[self.embeddings.name] = self.embeddings  # in case it is not trainable
         self._initialize_cost_function()
 
     def _initialize_placeholders_graph(self):
@@ -77,7 +78,7 @@ class ModelQRTP(object):
         with tf.name_scope('cost'):
             with tf.name_scope('regularization'):
                 l2_reg = 0.
-                for param in tf.trainable_variables():
+                for param in set(tf.trainable_variables() + [self.embeddings]):  # in case not trainable emb
                     l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
                 self.l2_reg = l2_reg
             self.cost = self.args.qr_weight*self.loss_qr + self.args.tp_weight*self.loss_tp + self.l2_reg
@@ -559,9 +560,8 @@ class LstmQRTP(ModelQRTP):
         self.output_dim = output_dim
         self.params = {}
         if embedding_layer.init_embeddings is not None:
-            embedding_var = tf.trainable_variables()[0]
-            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
-            self.init_assign_ops = {embedding_var: assign_op}
+            assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
+            self.init_assign_ops = {self.embeddings: assign_op}
         else:
             self.init_assign_ops = {}
 
@@ -670,9 +670,8 @@ class BiLstmQRTP(ModelQRTP):
         self.output_dim = output_dim
         self.params = {}
         if embedding_layer.init_embeddings is not None:
-            embedding_var = tf.trainable_variables()[0]
-            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
-            self.init_assign_ops = {embedding_var: assign_op}
+            assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
+            self.init_assign_ops = {self.embeddings: assign_op}
         else:
             self.init_assign_ops = {}
 
@@ -805,9 +804,8 @@ class CnnQRTP(ModelQRTP):
         self.output_dim = output_dim
         self.params = {}
         if embedding_layer.init_embeddings is not None:
-            embedding_var = tf.trainable_variables()[0]
-            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
-            self.init_assign_ops = {embedding_var: assign_op}
+            assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
+            self.init_assign_ops = {self.embeddings: assign_op}
         else:
             self.init_assign_ops = {}
 
@@ -923,9 +921,8 @@ class GruQRTP(ModelQRTP):
         self.output_dim = output_dim
         self.params = {}
         if embedding_layer.init_embeddings is not None:
-            embedding_var = tf.trainable_variables()[0]
-            assign_op = tf.assign(embedding_var, embedding_layer.init_embeddings)
-            self.init_assign_ops = {embedding_var: assign_op}
+            assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
+            self.init_assign_ops = {self.embeddings: assign_op}
         else:
             self.init_assign_ops = {}
 
