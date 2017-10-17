@@ -146,16 +146,6 @@ class ModelMultiTagsClassifier(object):
                 self.dropout_prob: np.float32(self.args.dropout),
             }
         )
-        conv_t, h_t, pooled_t = sess.run(
-            [self.conv_t, self.h_t, self.pooled_t],
-            feed_dict={
-                self.target: y_batch,
-                self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
-                self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
-                self.dropout_prob: np.float32(self.args.dropout),
-            }
-        )
-        print 'titles conv_t ht pooled_t ', titles.T.shape, conv_t.shape, h_t.shape, pooled_t.shape
         return _step, _loss, _cost
 
     def train_model(self, train_batches, dev=None, test=None):
@@ -764,12 +754,12 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
                             padding="VALID",
                             # padding="SAME",
                             name="conv-titles")
-                        self.conv_t = conv_t
+                        # self.conv_t = conv_t
 
                         # Apply nonlinearity
                         nl_fun = get_activation_by_name(self.args.activation)
                         h_t = nl_fun(tf.nn.bias_add(conv_t, b), name="act-titles")
-                        self.h_t = h_t
+                        # self.h_t = h_t
 
                         if self.args.average:
                             pooled_t = tf.reduce_mean(
@@ -783,7 +773,7 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
                                 axis=1,
                                 keep_dims=True
                             )
-                        self.pooled_t = pooled_t
+                        # self.pooled_t = pooled_t
 
                         # self.pooled_t = pooled_t
                         pooled_outputs_t.append(pooled_t)
