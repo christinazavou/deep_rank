@@ -92,10 +92,16 @@ class TPAPI:
             ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
             ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10))
 
-        # mat = ev.ConfusionMatrix(5)  # todo: fix for eval_labels not all labels
-        # print_matrix(mat, tag_names, 'Confusion:True Tag on x-axis, False Tag on y-axis', folder)
-        # mat = ev.CorrelationMatrix()
-        # print_matrix(mat, tag_names, 'Correlation: True Tag on both axis', folder)
+        mat = ev.ConfusionMatrix(5)
+        print_matrix(
+            mat,
+            [name for t, name in enumerate(tag_names) if t in eval_labels],
+            'Confusion:True Tag on x-axis, False Tag on y-axis',
+            folder)
+        mat = ev.CorrelationMatrix()
+        print_matrix(mat,
+                     [name for t, name in enumerate(tag_names) if t in eval_labels],
+                     'Correlation: True Tag on both axis', folder)
 
 
 if __name__ == '__main__':

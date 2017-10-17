@@ -47,13 +47,15 @@ class Evaluation(object):
         return round(100 * np.mean(found_per_sample / float(precision_at)), 3)
 
     def ConfusionMatrix(self, heatmap_at):
-        heatmap = np.zeros((self.outputs.shape[1], self.outputs.shape[1]))
-        cols = np.argsort(self.outputs, 1)[:, -heatmap_at:]  # because argsort makes in ascending order
+        outputs = self.outputs
+        targets = self.targets
+        heatmap = np.zeros((outputs.shape[1], outputs.shape[1]))
+        cols = np.argsort(outputs, 1)[:, -heatmap_at:]  # because argsort makes in ascending order
         for sample, c in enumerate(cols):
             for ci in c:
-                if self.targets[sample, ci] == 0:  # ci tag is predicted but not true
+                if targets[sample, ci] == 0:  # ci tag is predicted but not true
                     # for each true tag:
-                    for i in np.nonzero(self.targets[sample])[0]:
+                    for i in np.nonzero(targets[sample])[0]:
                         heatmap[ci, i] += 1
         return heatmap
 

@@ -48,12 +48,15 @@ def main():
     elif args.layer.lower() == "gru":
         from models import GruMultiTagsClassifier as Model
 
-    dev = myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id)
-    test = myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id)
-    train = myio.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id)
+    if args.cross_val:
+        train, dev, test = myio.create_cross_val_batches(df, ids_corpus, args.batch_size, padding_id)
+    else:
+        dev = myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id)
+        test = myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id)
+        train = myio.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id)
+
     print '{} batches of {} instances in dev, {} in test and {} in train.'.format(
         len(dev), args.batch_size, len(test), len(train))
-
     print time.time() - s_time
 
     # baselines_eval(train, dev, test)
@@ -87,7 +90,8 @@ if __name__ == '__main__':
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)
 
-    argparser.add_argument("--batch_size", type=int, default=256)
+    argparser.add_argument("--batch_size", type=int, default=128)
+    argparser.add_argument("--cross_val", type=int, default=0)
     argparser.add_argument("--learning_rate", type=float, default=0.001)
     argparser.add_argument("--optimizer", type=str, default="adam")
     argparser.add_argument("--l2_reg", type=float, default=1e-5)

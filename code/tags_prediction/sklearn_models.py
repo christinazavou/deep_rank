@@ -133,13 +133,15 @@ def main():
         else:
             raise Exception('unknown method')
 
-        # tx = scipy.sparse.vstack([x_train, x_dev])
-        # ty = np.vstack((y_train, y_dev))
-        # test_fold = [0 for _ in x_train] + [-1 for _ in x_dev]
-        # ps = PredefinedSplit(test_fold)
-        # clf = OneVsRestClassifier(CalibratedClassifierCV(clf, cv=ps), n_jobs=1)
-        # clf.fit(tx, ty)
-
+        # if args.calibrated:
+        #     x_train, y_train = shuffle(x_train, y_train)
+        #     tx = scipy.sparse.vstack([x_train, x_dev])
+        #     ty = np.vstack((y_train, y_dev))
+        #     test_fold = [0 for _ in x_train] + [-1 for _ in x_dev]
+        #     ps = PredefinedSplit(test_fold)
+        #     clf = OneVsRestClassifier(CalibratedClassifierCV(clf, cv=ps), n_jobs=1)
+        #     clf.fit(tx, ty)
+        # else:
         x_train, y_train = shuffle(x_train, y_train)
         clf = OneVsRestClassifier(CalibratedClassifierCV(clf), n_jobs=1)
         clf.fit(x_train, y_train)
@@ -168,6 +170,8 @@ if __name__ == '__main__':
     argparser.add_argument("--n_grams", type=int, default=1)
     argparser.add_argument("--truncate", type=int, default=1)
     argparser.add_argument("--njobs", type=int, default=2)
+
+    argparser.add_argument("--calibrated", type=int, default=1)
 
     args = argparser.parse_args()
     print args, '\n'

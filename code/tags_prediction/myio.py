@@ -155,3 +155,46 @@ def create_one_batch(titles, bodies, tag_labels, padding_id):
     tag_labels = np.stack(tag_labels)
     return titles, bodies, tag_labels
 
+
+def create_cross_val_batches(df, ids_corpus, batch_size, padding_id, perm=None):
+
+    # returns a list of batches where each batch is a list of (titles, bodies tags-as-np-array)
+
+    # df ids are int ids_corpus ids are str
+
+    data_ids = df['id'].values
+
+    if perm is None:  # if no given order (i.e. perm), make a shuffle-random one.
+        perm = range(len(data_ids))
+        random.shuffle(perm)
+
+    N = len(data_ids)
+
+    # for one batch:
+    cnt = 0
+    titles, bodies, tag_labels = [], [], []
+    batches = []
+
+    for u in xrange(N):
+        i = perm[u]
+        q_id = data_ids[i]
+        title, body, tag = ids_corpus[str(q_id)]
+        cnt += 1
+        titles.append(title)
+        bodies.append(body)
+        tag_labels.append(tag)
+
+        if cnt == batch_size or u == N-1:
+            titles, bodies, tag_labels = create_one_batch(titles, bodies, tag_labels, padding_id)
+            batches.append((titles, bodies, tag_labels))
+
+            titles, bodies, tag_labels = [], [], []
+            cnt = 0
+
+    total_batches = len(batches)
+    train_total = total_batches * 0.8
+    dev_total = train_total * 0.2
+    dev_batches = batches[0: int(dev_total)]
+    train_batches = batches[int(dev_total): int(train_total)]
+    test_batches = batches[int(train_total):]
+    return train_batches, dev_batches, test_batches
