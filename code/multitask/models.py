@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 from qr.evaluation import Evaluation as QAEvaluation
 from tags_prediction.evaluation import Evaluation as TPEvaluation
-from nn import get_activation_by_name
+from nn import get_activation_by_name, init_w_b_vals
 import gzip
 import pickle
 from prettytable import PrettyTable
@@ -55,11 +55,13 @@ class ModelQRTP(object):
         with tf.name_scope('outputs'):
 
             with tf.name_scope("MLP"):
-                self.w_o = tf.Variable(
-                    tf.random_normal([self.args.hidden_dim, self.output_dim], mean=0.0, stddev=0.05),
-                    name='weights_out'
+
+                w_vals, b_vals = init_w_b_vals(
+                    [self.args.hidden_dim, self.output_dim], [self.output_dim], self.args.activation
                 )
-                self.b_o = tf.Variable(tf.zeros([self.output_dim]), name='bias_out')
+
+                self.w_o = tf.Variable(w_vals, name='weights_out')
+                self.b_o = tf.Variable(b_vals, name='bias_out')
 
             output = tf.matmul(self.h_final, self.w_o) + self.b_o
             self.act_output = tf.nn.sigmoid(output)
@@ -840,8 +842,10 @@ class CnnQRTP(ModelQRTP):
                     filter_shape = [filter_size, self.embedding_layer.n_d, 1, self.args.hidden_dim]
                     print 'assuming num filters = hidden dim. IS IT CORRECT? '
 
-                    W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="conv-W")
-                    b = tf.Variable(tf.constant(0.1, shape=[self.args.hidden_dim]), name="conv-b")
+
+                    w_vals, b_vals = init_w_b_vals(filter_shape, [self.args.hidden_dim], self.args.activation)
+                    W = tf.Variable(w_vals, name="conv-W")
+                    b = tf.Variable(b_vals, name="conv-b")
 
                     with tf.name_scope('titles_output'):
                         conv_t = tf.nn.conv2d(

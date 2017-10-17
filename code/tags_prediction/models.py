@@ -5,7 +5,7 @@ import numpy as np
 import tensorflow as tf
 from prettytable import PrettyTable
 import myio
-from nn import get_activation_by_name
+from nn import get_activation_by_name, init_w_b_vals
 from evaluation import Evaluation
 
 
@@ -54,11 +54,13 @@ class ModelMultiTagsClassifier(object):
         with tf.name_scope('outputs'):
 
             with tf.name_scope("MLP"):
-                self.w_o = tf.Variable(
-                    tf.random_normal([self.args.hidden_dim, self.output_dim], mean=0.0, stddev=0.05),
-                    name='weights_out'
+
+                w_vals, b_vals = init_w_b_vals(
+                    [self.args.hidden_dim, self.output_dim], [self.output_dim], self.args.activation
                 )
-                self.b_o = tf.Variable(tf.zeros([self.output_dim]), name='bias_out')
+
+                self.w_o = tf.Variable(w_vals, name='weights_out')
+                self.b_o = tf.Variable(b_vals, name='bias_out')
 
             output = tf.matmul(self.h_final, self.w_o) + self.b_o
             self.act_output = tf.nn.sigmoid(output)
@@ -144,6 +146,16 @@ class ModelMultiTagsClassifier(object):
                 self.dropout_prob: np.float32(self.args.dropout),
             }
         )
+        conv_t, h_t, pooled_t = sess.run(
+            [self.conv_t, self.h_t, self.pooled_t],
+            feed_dict={
+                self.target: y_batch,
+                self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
+                self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
+                self.dropout_prob: np.float32(self.args.dropout),
+            }
+        )
+        print 'titles conv_t ht pooled_t ', titles.T.shape, conv_t.shape, h_t.shape, pooled_t.shape
         return _step, _loss, _cost
 
     def train_model(self, train_batches, dev=None, test=None):
@@ -739,8 +751,9 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
                     filter_shape = [filter_size, self.embedding_layer.n_d, 1, self.args.hidden_dim]
                     print 'assuming num filters = hidden dim. IS IT CORRECT? '
 
-                    W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="conv-W")
-                    b = tf.Variable(tf.constant(0.1, shape=[self.args.hidden_dim]), name="conv-b")
+                    w_vals, b_vals = init_w_b_vals(filter_shape, [self.args.hidden_dim], self.args.activation)
+                    W = tf.Variable(w_vals, name="conv-W")
+                    b = tf.Variable(b_vals, name="conv-b")
                     # self.W = W
 
                     with tf.name_scope('titles_output'):
@@ -749,11 +762,14 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
                             W,
                             strides=[1, 1, 1, 1],  # how much the window shifts by in each of the dimensions.
                             padding="VALID",
+                            # padding="SAME",
                             name="conv-titles")
+                        self.conv_t = conv_t
 
                         # Apply nonlinearity
                         nl_fun = get_activation_by_name(self.args.activation)
                         h_t = nl_fun(tf.nn.bias_add(conv_t, b), name="act-titles")
+                        self.h_t = h_t
 
                         if self.args.average:
                             pooled_t = tf.reduce_mean(
@@ -767,6 +783,7 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
                                 axis=1,
                                 keep_dims=True
                             )
+                        self.pooled_t = pooled_t
 
                         # self.pooled_t = pooled_t
                         pooled_outputs_t.append(pooled_t)
@@ -777,6 +794,7 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
                             W,
                             strides=[1, 1, 1, 1],
                             padding="VALID",
+                            # padding="SAME",
                             name="conv-bodies")
                         # self.conv_b = conv_b
 

@@ -1,7 +1,7 @@
 import tensorflow as tf
 import numpy as np
 from evaluation import Evaluation
-from nn import get_activation_by_name
+from nn import get_activation_by_name, init_w_b_vals
 import gzip
 import pickle
 from prettytable import PrettyTable
@@ -700,8 +700,9 @@ class CnnQR(ModelQR):
                     filter_shape = [filter_size, self.embedding_layer.n_d, 1, self.args.hidden_dim]
                     print 'assuming num filters = hidden dim. IS IT CORRECT? '
 
-                    W = tf.Variable(tf.truncated_normal(filter_shape, stddev=0.1), name="conv-W")
-                    b = tf.Variable(tf.constant(0.1, shape=[self.args.hidden_dim]), name="conv-b")
+                    w_vals, b_vals = init_w_b_vals(filter_shape, [self.args.hidden_dim], self.args.activation)
+                    W = tf.Variable(w_vals, name="conv-W")
+                    b = tf.Variable(b_vals, name="conv-b")
                     # self.W = W
 
                     with tf.name_scope('titles_output'):

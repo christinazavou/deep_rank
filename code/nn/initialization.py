@@ -58,3 +58,14 @@ def get_activation_by_name(name):
     #     return linear
     else:
         raise Exception("unknown activation type: {}".format(name))
+
+
+def init_w_b_vals(w_shape, b_shape, activation):
+    w_vals = tf.random_uniform(w_shape, minval=-0.5, maxval=0.5)
+    if activation == 'softmax':
+        w_vals *= 0.001
+    if activation == 'relu':
+        b_vals = np.ones(b_shape) * 0.01
+    else:
+        b_vals = tf.random_uniform(shape=b_shape, minval=-0.5, maxval=0.5)
+    return w_vals, b_vals
