@@ -754,12 +754,12 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
                             padding="VALID",
                             # padding="SAME",
                             name="conv-titles")
-                        # self.conv_t = conv_t
+                        # self.conv_t = conv_t  # batch_size x seq_len i.e. time_steps x 1 x hidden_dim
 
                         # Apply nonlinearity
                         nl_fun = get_activation_by_name(self.args.activation)
                         h_t = nl_fun(tf.nn.bias_add(conv_t, b), name="act-titles")
-                        # self.h_t = h_t
+                        # self.h_t = h_t  # batch_size x seq_len i.e. time_steps x 1 x hidden_dim
 
                         if self.args.average:
                             pooled_t = tf.reduce_mean(
@@ -773,9 +773,8 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
                                 axis=1,
                                 keep_dims=True
                             )
-                        # self.pooled_t = pooled_t
+                        # self.pooled_t = pooled_t  # batch_size x 1 x 1 x hidden_dim
 
-                        # self.pooled_t = pooled_t
                         pooled_outputs_t.append(pooled_t)
 
                     with tf.name_scope('bodies_output'):
