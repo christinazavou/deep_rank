@@ -617,7 +617,7 @@ class LstmQRTP(ModelQRTP):
             elif self.args.average == 0:
                 self.t_state = self.t_current_state[0][1]
             else:
-                self.t_state = tf.reduce_max(self.t_states_series, 1)
+                self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
 
         with tf.name_scope('bodies_output'):
 
@@ -636,7 +636,7 @@ class LstmQRTP(ModelQRTP):
             elif self.args.average == 0:
                 self.b_state = self.b_current_state[0][1]
             else:
-                self.b_state = tf.reduce_max(self.b_states_series, 1)
+                self.b_state = self.maximum_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
 
         with tf.name_scope('outputs'):
             with tf.name_scope('encodings'):
@@ -659,6 +659,29 @@ class LstmQRTP(ModelQRTP):
         # batch*d
         s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
         return s
+
+    def maximum_without_padding(self, x, ids):
+
+        def tf_repeat(tensor, repeats):
+            expanded_tensor = tf.expand_dims(tensor, -1)
+            multiples = [1] + repeats
+            tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
+            repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
+            return repeated_tensor
+
+        # len*batch*1
+        mask = tf.not_equal(ids, self.padding_id)
+        condition = tf.reshape(
+            tf_repeat(mask, [1, self.embedding_layer.n_d]),
+            [tf.shape(x)[0], -1, self.embedding_layer.n_d]
+        )
+
+        smallest = tf.ones_like(x)*(-100000)
+
+        # batch*d
+        s = tf.where(condition, x, smallest)
+        m = tf.reduce_max(s, 1)
+        return m
 
 
 class BiLstmQRTP(ModelQRTP):
@@ -733,8 +756,8 @@ class BiLstmQRTP(ModelQRTP):
                 forw_t_state = forw_t_state[1]  # (this is last output based on seq len)
                 back_t_state = back_t_state[1]  # (same BUT in backwards => first output!)
             else:
-                forw_t_state = tf.reduce_max(forw_t_outputs, 1)
-                back_t_state = tf.reduce_max(back_t_outputs, 1)
+                forw_t_state = self.maximum_without_padding(forw_t_outputs, self.titles_words_ids_placeholder)
+                back_t_state = self.maximum_without_padding(back_t_outputs, self.titles_words_ids_placeholder)
 
             if self.args.concat:
                 self.t_state_vec = tf.concat([forw_t_state, back_t_state], axis=1)
@@ -764,8 +787,8 @@ class BiLstmQRTP(ModelQRTP):
                 forw_b_state = forw_b_state[1]  # (this is last output based on seq len)
                 back_b_state = back_b_state[1]  # (same BUT in backwards => first output!)
             else:
-                forw_b_state = tf.reduce_max(forw_b_outputs, 1)
-                back_b_state = tf.reduce_max(back_b_outputs, 1)
+                forw_b_state = self.maximum_without_padding(forw_b_outputs, self.bodies_words_ids_placeholder)
+                back_b_state = self.maximum_without_padding(back_b_outputs, self.bodies_words_ids_placeholder)
 
             if self.args.concat:
                 self.b_state_vec = tf.concat([forw_b_state, back_b_state], axis=1)
@@ -793,6 +816,29 @@ class BiLstmQRTP(ModelQRTP):
         # batch*d
         s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
         return s
+
+    def maximum_without_padding(self, x, ids):
+
+        def tf_repeat(tensor, repeats):
+            expanded_tensor = tf.expand_dims(tensor, -1)
+            multiples = [1] + repeats
+            tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
+            repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
+            return repeated_tensor
+
+        # len*batch*1
+        mask = tf.not_equal(ids, self.padding_id)
+        condition = tf.reshape(
+            tf_repeat(mask, [1, self.embedding_layer.n_d]),
+            [tf.shape(x)[0], -1, self.embedding_layer.n_d]
+        )
+
+        smallest = tf.ones_like(x)*(-100000)
+
+        # batch*d
+        s = tf.where(condition, x, smallest)
+        m = tf.reduce_max(s, 1)
+        return m
 
 
 class CnnQRTP(ModelQRTP):
@@ -980,7 +1026,7 @@ class GruQRTP(ModelQRTP):
             elif self.args.average == 0:
                 self.t_state = self.t_current_state[0]
             else:
-                self.t_state = tf.reduce_max(self.t_states_series, 1)
+                self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
 
         with tf.name_scope('bodies_output'):
             self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
@@ -998,7 +1044,7 @@ class GruQRTP(ModelQRTP):
             elif self.args.average == 0:
                 self.b_state = self.b_current_state[0]
             else:
-                self.b_state = tf.reduce_max(self.b_states_series, 1)
+                self.b_state = self.maximum_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
 
         with tf.name_scope('outputs'):
             # batch * d
@@ -1020,3 +1066,26 @@ class GruQRTP(ModelQRTP):
         # batch*d
         s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
         return s
+
+    def maximum_without_padding(self, x, ids):
+
+        def tf_repeat(tensor, repeats):
+            expanded_tensor = tf.expand_dims(tensor, -1)
+            multiples = [1] + repeats
+            tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
+            repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
+            return repeated_tensor
+
+        # len*batch*1
+        mask = tf.not_equal(ids, self.padding_id)
+        condition = tf.reshape(
+            tf_repeat(mask, [1, self.embedding_layer.n_d]),
+            [tf.shape(x)[0], -1, self.embedding_layer.n_d]
+        )
+
+        smallest = tf.ones_like(x)*(-100000)
+
+        # batch*d
+        s = tf.where(condition, x, smallest)
+        m = tf.reduce_max(s, 1)
+        return m
