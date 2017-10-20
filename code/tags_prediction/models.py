@@ -555,10 +555,7 @@ class LstmMultiTagsClassifier(ModelMultiTagsClassifier):
 
         # len*batch*1
         mask = tf.not_equal(ids, self.padding_id)
-        condition = tf.reshape(
-            tf_repeat(mask, [1, self.embedding_layer.n_d]),
-            [tf.shape(x)[0], -1, self.embedding_layer.n_d]
-        )
+        condition = tf.reshape(tf_repeat(mask, [1, tf.shape(x)[2]]), tf.shape(x))
 
         smallest = tf.ones_like(x)*(-100000)
 
@@ -718,10 +715,7 @@ class BiLstmMultiTagsClassifier(ModelMultiTagsClassifier):
 
         # len*batch*1
         mask = tf.not_equal(ids, self.padding_id)
-        condition = tf.reshape(
-            tf_repeat(mask, [1, self.embedding_layer.n_d]),
-            [tf.shape(x)[0], -1, self.embedding_layer.n_d]
-        )
+        condition = tf.reshape(tf_repeat(mask, [1, tf.shape(x)[2]]), tf.shape(x))
 
         smallest = tf.ones_like(x)*(-100000)
 
@@ -991,10 +985,7 @@ class GruMultiTagsClassifier(ModelMultiTagsClassifier):
 
         # len*batch*1
         mask = tf.not_equal(ids, self.padding_id)
-        condition = tf.reshape(
-            tf_repeat(mask, [1, self.embedding_layer.n_d]),
-            [tf.shape(x)[0], -1, self.embedding_layer.n_d]
-        )
+        condition = tf.reshape(tf_repeat(mask, [1, tf.shape(x)[2]]), tf.shape(x))
 
         smallest = tf.ones_like(x)*(-100000)
 
