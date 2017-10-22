@@ -188,7 +188,7 @@ class ModelMultiTagsClassifier(object):
 
             # TRAIN LOSS
             train_loss_writer = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "train", "loss"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "train", "loss"),
             )
             train_cost_writer = tf.summary.FileWriter(
                 os.path.join(self.args.save_dir, "summaries", "train", "cost"), sess.graph
@@ -202,23 +202,23 @@ class ModelMultiTagsClassifier(object):
                 p_norm_summaries[param_name] = tf.summary.scalar(param_name, p_norm_placeholders[param_name])
             p_norm_summary_op = tf.summary.merge(p_norm_summaries.values())
             p_norm_summary_dir = os.path.join(self.args.save_dir, "summaries", "p_norm")
-            p_norm_summary_writer = tf.summary.FileWriter(p_norm_summary_dir, sess.graph)
+            p_norm_summary_writer = tf.summary.FileWriter(p_norm_summary_dir,)
 
             # DEV LOSS & EVAL
             dev_loss_writer = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "loss"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "loss"),
             )
             dev_eval_writer1 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "Rat5"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "Rat5"),
             )
             dev_eval_writer2 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "Rat10"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "Rat10"),
             )
             dev_eval_writer3 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "Pat5"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "Pat5"),
             )
             dev_eval_writer4 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "Pat10"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "Pat10"),
             )
 
             loss = tf.placeholder(tf.float32)
@@ -341,7 +341,7 @@ class ModelMultiTagsClassifier(object):
 
     def save(self, sess, path, step):
         # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again
-        path = "{}_{}_{}".format(path, step, ".pkl.gz")
+        path = "{}_{}".format(path, ".pkl.gz")
         print("Saving model checkpoint to {}\n".format(path))
         params_values = {}
         for param_name, param in self.params.iteritems():

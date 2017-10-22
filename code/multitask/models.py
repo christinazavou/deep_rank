@@ -248,10 +248,10 @@ class ModelQRTP(object):
 
             # TRAIN LOSS
             train_loss_qr_writer = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "train", "QR"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "train", "QR"),
             )
             train_loss_tp_writer = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "train", "TP"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "train", "TP"),
             )
             train_cost_writer = tf.summary.FileWriter(
                 os.path.join(self.args.save_dir, "summaries", "train"), sess.graph
@@ -265,42 +265,42 @@ class ModelQRTP(object):
                 p_norm_summaries[param_name] = tf.summary.scalar(param_name, p_norm_placeholders[param_name])
             p_norm_summary_op = tf.summary.merge(p_norm_summaries.values())
             p_norm_summary_dir = os.path.join(self.args.save_dir, "summaries", "p_norm")
-            p_norm_summary_writer = tf.summary.FileWriter(p_norm_summary_dir, sess.graph)
+            p_norm_summary_writer = tf.summary.FileWriter(p_norm_summary_dir, )
 
             # DEV LOSS
             dev_loss_qr_writer = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "QR"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR"),
             )
             dev_loss_tp_writer = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "TP"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP"),
             )
 
             # DEV evaluation for QR
             dev_eval_qr_writer1 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "MAP"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "MAP"),
             )
             dev_eval_qr_writer2 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "MRR"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "MRR"),
             )
             dev_eval_qr_writer3 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "Pat1"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "Pat1"),
             )
             dev_eval_qr_writer4 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "Pat5"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "QR", "Pat5"),
             )
 
             # DEV for TP
             dev_eval_tp_writer1 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Rat5"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Rat5"),
             )
             dev_eval_tp_writer2 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Rat10"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Rat10"),
             )
             dev_eval_tp_writer3 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Pat5"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Pat5"),
             )
             dev_eval_tp_writer4 = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Pat10"), sess.graph
+                os.path.join(self.args.save_dir, "summaries", "dev", "TP", "Pat10"),
             )
 
             loss = tf.placeholder(tf.float32)
@@ -465,7 +465,7 @@ class ModelQRTP(object):
 
     def save(self, sess, path, step):
         # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again
-        path = "{}_{}_{}".format(path, step, ".pkl.gz")
+        path = "{}_{}".format(path, ".pkl.gz")
         print("Saving model checkpoint to {}\n".format(path))
         params_values = {}
         for param_name, param in self.params.iteritems():
