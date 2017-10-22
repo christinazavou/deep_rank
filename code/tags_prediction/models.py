@@ -251,6 +251,8 @@ class ModelMultiTagsClassifier(object):
 
                     if i % 10 == 0 and self.args.testing:
                         print 'labels in batch: ', np.sum(np.sum(tag_labels_b, 0) > 0)
+                        emb = sess.run(self.embeddings)
+                        print '\nemb {}\n'.format(emb[10][0:10])
 
                     cur_step, cur_loss, cur_cost = self.train_batch(
                         titles_b, bodies_b, tag_labels_b,
