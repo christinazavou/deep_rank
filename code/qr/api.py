@@ -24,13 +24,13 @@ class QRAPI:
             ))
 
         if layer.lower() == "lstm":
-            from models import LstmQA as Model
+            from models import LstmQR as Model
         elif layer.lower() == "bilstm":
-            from models import BiLstmQA as Model
+            from models import BiLstmQR as Model
         elif layer.lower() == "cnn":
-            from models import CnnQA as Model
+            from models import CnnQR as Model
         elif layer.lower() == "gru":
-            from models import GruQA as Model
+            from models import GruQR as Model
 
         # model = Model(args=None, embedding_layer=embedding_layer, weights=weights)
         model = Model(args=None, embedding_layer=embedding_layer)
@@ -121,20 +121,21 @@ if __name__ == '__main__':
 
         devmap, devmrr, devpat1, devpat5, rank_labels, rank_ids, qids, rank_scores = myqrapi.evaluate(dev, sess)
 
-        with open(args.results_file, 'w') as f:
-            for i, (_, _, labels, pid, qids) in enumerate(dev):
-                print_qids_similar = [x for x, l in zip(qids, labels) if l == 1]
-                print_qids_similar = " ".join([str(x) for x in print_qids_similar])
+        if args.results_file:
+            with open(args.results_file, 'w') as f:
+                for i, (_, _, labels, pid, qids) in enumerate(dev):
+                    print_qids_similar = [x for x, l in zip(qids, labels) if l == 1]
+                    print_qids_similar = " ".join([str(x) for x in print_qids_similar])
 
-                print_qids_candidates = " ".join([str(x) for x in rank_ids[i]])
+                    print_qids_candidates = " ".join([str(x) for x in rank_ids[i]])
 
-                print_ranked_scores = " ".join([str(x) for x in rank_scores[i]])
+                    print_ranked_scores = " ".join([str(x) for x in rank_scores[i]])
 
-                print_ranked_labels = " ".join([str(x) for x in rank_labels[i]])
+                    print_ranked_labels = " ".join([str(x) for x in rank_labels[i]])
 
-                f.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                    pid, print_qids_similar, print_qids_candidates,
-                    print_ranked_scores,
-                    print_ranked_labels,
-                    devmap[i], devmrr[i], devpat1[i], devpat5[i]
-                ))
+                    f.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
+                        pid, print_qids_similar, print_qids_candidates,
+                        print_ranked_scores,
+                        print_ranked_labels,
+                        devmap[i], devmrr[i], devpat1[i], devpat5[i]
+                    ))
