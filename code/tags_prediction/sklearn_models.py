@@ -133,18 +133,39 @@ def main():
         else:
             raise Exception('unknown method')
 
-        # if args.calibrated:
-        #     x_train, y_train = shuffle(x_train, y_train)
-        #     tx = scipy.sparse.vstack([x_train, x_dev])
-        #     ty = np.vstack((y_train, y_dev))
-        #     test_fold = [0 for _ in x_train] + [-1 for _ in x_dev]
-        #     ps = PredefinedSplit(test_fold)
-        #     clf = OneVsRestClassifier(CalibratedClassifierCV(clf, cv=ps), n_jobs=1)
-        #     clf.fit(tx, ty)
-        # else:
-        x_train, y_train = shuffle(x_train, y_train)
-        clf = OneVsRestClassifier(CalibratedClassifierCV(clf), n_jobs=1)
-        clf.fit(x_train, y_train)
+        if args.cross_val:
+            x = scipy.sparse.vstack([x_train, x_dev, x_test])
+            y = np.vstack((y_train, y_dev, y_test))
+            x, y = shuffle(x, y)
+            print 'ena ', x.shape, y.shape
+            total = x.shape[0]
+            train_total = total * 0.8
+            dev_total = train_total * 0.2
+            dev_x, dev_y = x[0: int(dev_total)], y[0: int(dev_total)]
+            train_x, train_y = x[int(dev_total): int(train_total)], y[int(dev_total): int(train_total)]
+            test_x, test_y = x[int(train_total):], y[int(train_total):]
+            print 'dio ', dev_x.shape, train_x.shape, test_x.shape
+
+            test_fold = [0 for _ in train_x] + [-1 for _ in dev_x]
+            ps = PredefinedSplit(test_fold)
+            tx = scipy.sparse.vstack([train_x, dev_x])
+            ty = np.vstack((train_y, dev_y))
+            print 'tria ', tx.shape, ty.shape
+            clf = OneVsRestClassifier(CalibratedClassifierCV(clf, cv=ps), n_jobs=1)
+            clf.fit(tx, ty)
+        else:
+            # if args.calibrated:
+            #     x_train, y_train = shuffle(x_train, y_train)
+            #     tx = scipy.sparse.vstack([x_train, x_dev])
+            #     ty = np.vstack((y_train, y_dev))
+            #     test_fold = [0 for _ in x_train] + [-1 for _ in x_dev]
+            #     ps = PredefinedSplit(test_fold)
+            #     clf = OneVsRestClassifier(CalibratedClassifierCV(clf, cv=ps), n_jobs=1)
+            #     clf.fit(tx, ty)
+            # else:
+            x_train, y_train = shuffle(x_train, y_train)
+            clf = OneVsRestClassifier(CalibratedClassifierCV(clf), n_jobs=1)
+            clf.fit(x_train, y_train)
 
         save_model(clf, args.model_file)
         tuned_model = clf
@@ -172,6 +193,7 @@ if __name__ == '__main__':
     argparser.add_argument("--njobs", type=int, default=2)
 
     argparser.add_argument("--calibrated", type=int, default=1)
+    argparser.add_argument("--cross_val", type=int, default=0)
 
     args = argparser.parse_args()
     print args, '\n'

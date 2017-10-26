@@ -61,7 +61,7 @@ def main():
             from models import GruQRTP as Model
         else:
             raise Exception("no correct layer given")
-        
+
         model = Model(args, embedding_layer, len(label_tags), weights=weights if args.reweight else None)
         model.ready()
         print 'total params: ', model.num_parameters()
