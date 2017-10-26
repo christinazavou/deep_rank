@@ -26,12 +26,14 @@ def main():
 
     if args.layer.lower() == "lstm":
         from models import LstmQR as Model
-    elif args.layer.lower() == "bilstm":
-        from models import BiLstmQR as Model
+    elif args.layer.lower() in ["bilstm", "bigru"]:
+        from models import BiRNNQR as Model
     elif args.layer.lower() == "cnn":
         from models import CnnQR as Model
     elif args.layer.lower() == "gru":
         from models import GruQR as Model
+    else:
+        raise Exception("no correct layer given")
 
     if args.dev:
         dev = myio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)

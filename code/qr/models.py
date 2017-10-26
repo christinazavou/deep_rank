@@ -237,7 +237,6 @@ class ModelQR(object):
                     cur_step, cur_loss, cur_cost = self.train_batch(
                         idts, idbs, idps, train_op, global_step, sess
                     )
-
                     summary = sess.run(loss_summary, {loss: cur_loss})
                     train_loss_writer.add_summary(summary, cur_step)
                     train_loss_writer.flush()
@@ -403,6 +402,21 @@ class LstmQR(ModelQR):
         else:
             self.init_assign_ops = {}
 
+    def _initialize_placeholders_graph(self):
+
+        with tf.name_scope('input'):
+            self.titles_words_ids_placeholder = tf.placeholder(tf.int32, [None, None], name='titles_ids')
+            self.bodies_words_ids_placeholder = tf.placeholder(tf.int32, [None, None], name='bodies_ids')
+            self.pairs_ids_placeholder = tf.placeholder(tf.int32, [None, None], name='bodies_ids')  # LENGTH = 3 OR 22
+
+            self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
+
+            # if self.args.zeros_init:
+            #     self.init_state = tf.placeholder(
+            #         tf.float32, [self.args.depth, 2, None, self.args.hidden_dim], name='init_state')
+            # else:
+            #     self.init_state = None
+
     def _initialize_encoder_graph(self):
 
         self.SLT = self._find_sequence_length(self.titles_words_ids_placeholder)
@@ -428,16 +442,29 @@ class LstmQR(ModelQR):
 
             def lstm_cell():
                 _cell = tf.nn.rnn_cell.LSTMCell(
-                    self.args.hidden_dim, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
+                    self.args.hidden_dim,
+                    state_is_tuple=True,
+                    activation=get_activation_by_name(self.args.activation)
                 )
-                # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
                 return _cell
 
             cell = tf.nn.rnn_cell.MultiRNNCell(
                 [lstm_cell() for _ in range(self.args.depth)]
             )
 
+        # if self.init_state is not None:
+        #     state_per_layer_list = tf.unstack(self.init_state, axis=0)  # i.e. unstack for each layer
+        #     rnn_tuple_state = tuple(
+        #         [tf.nn.rnn_cell.LSTMStateTuple(state_per_layer_list[idx][0], state_per_layer_list[idx][1])
+        #          # i.e. cell_s, hidden_s
+        #          for idx in range(self.args.depth)]
+        #     )
+
         with tf.name_scope('titles_output'):
+
+            # if self.init_state is not None:
+            #     self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(
+            #         cell, self.titles, initial_state=rnn_tuple_state, sequence_length=self.SLT)
             self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(
                 cell,
                 self.titles,
@@ -461,6 +488,11 @@ class LstmQR(ModelQR):
                 self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
 
         with tf.name_scope('bodies_output'):
+
+            # if self.init_state is not None:
+            #     self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
+            #         cell, self.bodies, initial_state=rnn_tuple_state, sequence_length=self.SLB)
+            # else:
             self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
                 cell,
                 self.bodies,
@@ -525,7 +557,7 @@ class LstmQR(ModelQR):
         return m
 
 
-class BiLstmQR(ModelQR):
+class BiRNNQR(ModelQR):
 
     def __init__(self, args, embedding_layer, weights=None):
         self.args = args
@@ -563,17 +595,30 @@ class BiLstmQR(ModelQR):
             self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
             self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
 
-        with tf.name_scope('LSTM'):
+        if self.args.layer.lower() == 'bigru':
+            with tf.name_scope('GRU'):
 
-            def lstm_cell(state_size):
-                _cell = tf.nn.rnn_cell.LSTMCell(
-                    state_size, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
-                )
-                # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
-                return _cell
+                def gru_cell(state_size):
+                    _cell = tf.nn.rnn_cell.GRUCell(
+                        state_size, activation=get_activation_by_name(self.args.activation)
+                    )
+                    # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
+                    return _cell
 
-            forward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
-            backward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+                forward_cell = gru_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+                backward_cell = gru_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+        else:
+            with tf.name_scope('LSTM'):
+
+                def lstm_cell(state_size):
+                    _cell = tf.nn.rnn_cell.LSTMCell(
+                        state_size, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
+                    )
+                    # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
+                    return _cell
+
+                forward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+                backward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
 
         with tf.name_scope('titles_output'):
             t_outputs, t_state = tf.nn.bidirectional_dynamic_rnn(
@@ -583,9 +628,15 @@ class BiLstmQR(ModelQR):
                 dtype=tf.float32,
                 sequence_length=self.SLT
             )
-            # output_fw = a Tensor shaped: [batch_size, max_time, cell_fw.output_size]
-            # output_bw = a Tensor shaped: [batch_size, max_time, cell_bw.output_size].
-            # output_states: A tuple (output_state_fw, output_state_bw)
+            # forw_t_outputs = a Tensor shaped: [batch_size, max_time, cell_fw.output_size]
+            # back_t_outputs = a Tensor shaped: [batch_size, max_time, cell_bw.output_size].
+            # if BiLSTM
+            # t_state: A tuple (output_state_fw, output_state_bw)
+            # where each state is a tuple of the hidden and output states that are ndarrays of shape
+            # [batch_size, cell_fw.output_size]
+            # if BiGRU
+            # t_state: A tuple (output_state_fw, output_state_bw)
+            # where each state is an ndarray of shape [batch_size, cell_fw.output_size]
 
             forw_t_outputs, back_t_outputs = t_outputs
             forw_t_state, back_t_state = t_state
@@ -598,8 +649,12 @@ class BiLstmQR(ModelQR):
                 forw_t_state = self.average_without_padding(forw_t_outputs, self.titles_words_ids_placeholder)
                 back_t_state = self.average_without_padding(back_t_outputs, self.titles_words_ids_placeholder)
             elif self.args.average == 0:
-                forw_t_state = forw_t_state[1]  # (this is last output based on seq len)
-                back_t_state = back_t_state[1]  # (same BUT in backwards => first output!)
+                if self.args.layer.lower() == 'bigru':
+                    forw_t_state = forw_t_state  # (this is last output based on seq len)
+                    back_t_state = back_t_state  # (same BUT in backwards => first output!)
+                else:
+                    forw_t_state = forw_t_state[1]  # (this is last output based on seq len)
+                    back_t_state = back_t_state[1]  # (same BUT in backwards => first output!)
             else:
                 forw_t_state = self.maximum_without_padding(forw_t_outputs, self.titles_words_ids_placeholder)
                 back_t_state = self.maximum_without_padding(back_t_outputs, self.titles_words_ids_placeholder)
@@ -617,9 +672,15 @@ class BiLstmQR(ModelQR):
                 dtype=tf.float32,
                 sequence_length=self.SLB
             )
-            # output_fw = a Tensor shaped: [batch_size, max_time, cell_fw.output_size]
-            # output_bw = a Tensor shaped: [batch_size, max_time, cell_bw.output_size].
-            # output_states: A tuple (output_state_fw, output_state_bw)
+            # forw_t_outputs = a Tensor shaped: [batch_size, max_time, cell_fw.output_size]
+            # back_t_outputs = a Tensor shaped: [batch_size, max_time, cell_bw.output_size].
+            # if BiLSTM
+            # t_state: A tuple (output_state_fw, output_state_bw)
+            # where each state is a tuple of the hidden and output states that are ndarrays of shape
+            # [batch_size, cell_fw.output_size]
+            # if BiGRU
+            # t_state: A tuple (output_state_fw, output_state_bw)
+            # where each state is an ndarray of shape [batch_size, cell_fw.output_size]
 
             forw_b_outputs, back_b_outputs = b_outputs
             forw_b_state, back_b_state = b_state
@@ -632,8 +693,12 @@ class BiLstmQR(ModelQR):
                 forw_b_state = self.average_without_padding(forw_b_outputs, self.bodies_words_ids_placeholder)
                 back_b_state = self.average_without_padding(back_b_outputs, self.bodies_words_ids_placeholder)
             elif self.args.average == 0:
-                forw_b_state = forw_b_state[1]  # (this is last output based on seq len)
-                back_b_state = back_b_state[1]  # (same BUT in backwards => first output!)
+                if self.args.layer.lower() == 'bigru':
+                    forw_b_state = forw_b_state  # (this is last output based on seq len)
+                    back_b_state = back_b_state  # (same BUT in backwards => first output!)
+                else:
+                    forw_b_state = forw_b_state[1]  # (this is last output based on seq len)
+                    back_b_state = back_b_state[1]  # (same BUT in backwards => first output!)
             else:
                 forw_b_state = self.maximum_without_padding(forw_b_outputs, self.bodies_words_ids_placeholder)
                 back_b_state = self.maximum_without_padding(back_b_outputs, self.bodies_words_ids_placeholder)
@@ -942,5 +1007,3 @@ class GruQR(ModelQR):
         s = tf.where(condition, x, smallest)
         m = tf.reduce_max(s, 1)
         return m
-
-

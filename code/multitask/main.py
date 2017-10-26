@@ -53,13 +53,15 @@ def main():
 
         if args.layer.lower() == "lstm":
             from models import LstmQRTP as Model
-        elif args.layer.lower() == "bilstm":
-            from models import BiLstmQRTP as Model
+        elif args.layer.lower() in ["bilstm", "bigru"]:
+            from models import BiRNNQRTP as Model
         elif args.layer.lower() == "cnn":
             from models import CnnQRTP as Model
         elif args.layer.lower() == "gru":
             from models import GruQRTP as Model
-
+        else:
+            raise Exception("no correct layer given")
+        
         model = Model(args, embedding_layer, len(label_tags), weights=weights if args.reweight else None)
         model.ready()
         print 'total params: ', model.num_parameters()

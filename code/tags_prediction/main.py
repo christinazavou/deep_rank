@@ -41,12 +41,14 @@ def main():
 
     if args.layer.lower() == "lstm":
         from models import LstmMultiTagsClassifier as Model
-    elif args.layer.lower() == "bilstm":
-        from models import BiLstmMultiTagsClassifier as Model
+    elif args.layer.lower() in ["bilstm", "bigru"]:
+        from models import BiRNNMultiTagsClassifier as Model
     elif args.layer.lower() == "cnn":
         from models import CnnMultiTagsClassifier as Model
     elif args.layer.lower() == "gru":
         from models import GruMultiTagsClassifier as Model
+    else:
+        raise Exception("no correct layer given")
 
     if args.cross_val:
         train, dev, test = myio.create_cross_val_batches(df, ids_corpus, args.batch_size, padding_id)

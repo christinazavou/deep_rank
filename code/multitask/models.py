@@ -681,7 +681,7 @@ class LstmQRTP(ModelQRTP):
         return m
 
 
-class BiLstmQRTP(ModelQRTP):
+class BiRNNQRTP(ModelQRTP):
 
     def __init__(self, args, embedding_layer, output_dim, weights=None):
         self.args = args
@@ -718,17 +718,30 @@ class BiLstmQRTP(ModelQRTP):
             self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
             self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
 
-        with tf.name_scope('LSTM'):
+        if self.args.layer.lower() == 'bigru':
+            with tf.name_scope('GRU'):
 
-            def lstm_cell(state_size):
-                _cell = tf.nn.rnn_cell.LSTMCell(
-                    state_size, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
-                )
-                # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
-                return _cell
+                def gru_cell(state_size):
+                    _cell = tf.nn.rnn_cell.GRUCell(
+                        state_size, activation=get_activation_by_name(self.args.activation)
+                    )
+                    # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
+                    return _cell
 
-            forward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
-            backward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+                forward_cell = gru_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+                backward_cell = gru_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+        else:
+            with tf.name_scope('LSTM'):
+
+                def lstm_cell(state_size):
+                    _cell = tf.nn.rnn_cell.LSTMCell(
+                        state_size, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
+                    )
+                    # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
+                    return _cell
+
+                forward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
+                backward_cell = lstm_cell(self.args.hidden_dim / 2 if self.args.concat == 1 else self.args.hidden_dim)
 
         with tf.name_scope('titles_output'):
             t_outputs, t_state = tf.nn.bidirectional_dynamic_rnn(
@@ -750,8 +763,12 @@ class BiLstmQRTP(ModelQRTP):
                 forw_t_state = self.average_without_padding(forw_t_outputs, self.titles_words_ids_placeholder)
                 back_t_state = self.average_without_padding(back_t_outputs, self.titles_words_ids_placeholder)
             elif self.args.average == 0:
-                forw_t_state = forw_t_state[1]  # (this is last output based on seq len)
-                back_t_state = back_t_state[1]  # (same BUT in backwards => first output!)
+                if self.args.layer.lower() == 'bigru':
+                    forw_t_state = forw_t_state  # (this is last output based on seq len)
+                    back_t_state = back_t_state  # (same BUT in backwards => first output!)
+                else:
+                    forw_t_state = forw_t_state[1]  # (this is last output based on seq len)
+                    back_t_state = back_t_state[1]  # (same BUT in backwards => first output!)
             else:
                 forw_t_state = self.maximum_without_padding(forw_t_outputs, self.titles_words_ids_placeholder)
                 back_t_state = self.maximum_without_padding(back_t_outputs, self.titles_words_ids_placeholder)
@@ -781,8 +798,12 @@ class BiLstmQRTP(ModelQRTP):
                 forw_b_state = self.average_without_padding(forw_b_outputs, self.bodies_words_ids_placeholder)
                 back_b_state = self.average_without_padding(back_b_outputs, self.bodies_words_ids_placeholder)
             elif self.args.average == 0:
-                forw_b_state = forw_b_state[1]  # (this is last output based on seq len)
-                back_b_state = back_b_state[1]  # (same BUT in backwards => first output!)
+                if self.args.layer.lower() == 'bigru':
+                    forw_b_state = forw_b_state  # (this is last output based on seq len)
+                    back_b_state = back_b_state  # (same BUT in backwards => first output!)
+                else:
+                    forw_b_state = forw_b_state[1]  # (this is last output based on seq len)
+                    back_b_state = back_b_state[1]  # (same BUT in backwards => first output!)
             else:
                 forw_b_state = self.maximum_without_padding(forw_b_outputs, self.bodies_words_ids_placeholder)
                 back_b_state = self.maximum_without_padding(back_b_outputs, self.bodies_words_ids_placeholder)
