@@ -102,6 +102,7 @@ if __name__ == "__main__":
     argparser.add_argument("--reweight", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
+    argparser.add_argument("--loss", type=str, default="mean")
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

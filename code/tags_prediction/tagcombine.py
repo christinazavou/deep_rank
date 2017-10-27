@@ -218,8 +218,8 @@ if __name__ == '__main__':
 
     argparser = argparse.ArgumentParser(sys.argv[0])
     argparser.add_argument("--df_path", type=str, default="/home/christina/Documents/Thesis/data/askubuntu/additional/data_frame_corpus_str.csv")
-    argparser.add_argument("--tags_file", type=str, default="/home/christina/Documents/Thesis/data/askubuntu/additional/tags_files/top100_corpus_tags.p")
-    argparser.add_argument("--model_file", type=str, default="/media/christina/Data/Thesis/models/askubuntu/tags_prediction/tagcombine_mlr_100.p")
+    argparser.add_argument("--tags_file", type=str, default="/home/christina/Documents/Thesis/data/askubuntu/additional/tags_files/valid_train_tags.p")
+    argparser.add_argument("--model_file", type=str, default="/media/christina/Data/Thesis/models/askubuntu/tags_prediction/R@10/corpus908/TagCombine/model.p")
 
     argparser.add_argument("--truncate", type=int, default=1)
     argparser.add_argument("--njobs", type=int, default=2)

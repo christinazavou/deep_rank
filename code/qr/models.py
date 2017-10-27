@@ -51,7 +51,13 @@ class ModelQR(object):
 
             with tf.name_scope('loss'):
                 diff = neg_scores - pos_scores + 1.0
-                loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
+                # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
+                if self.args.loss == 'max':
+                    loss = tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff)
+                elif self.args.loss == 'sum':
+                    loss = tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff)
+                else:
+                    loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
                 self.loss = loss
 
             with tf.name_scope('regularization'):
@@ -111,13 +117,26 @@ class ModelQR(object):
 
     def evaluate(self, data, sess):
         res = []
+        batch_losses = []
         hinge_loss = 0.
 
+        sample = 0
         for idts, idbs, id_labels in data:
+            sample += 1
             cur_scores = self.eval_batch(idts, idbs, sess)
+            # each batch is only one query => max margin loss for one query
             mml = self.max_margin_loss(id_labels, cur_scores)
             if mml is not None:
-                hinge_loss = (hinge_loss + mml) / 2.
+                batch_losses.append(mml)
+            if (sample % self.args.batch_size == 0)or (sample == len(data) - 1):
+                if self.args.loss == "sum":
+                    hinge_loss = (hinge_loss + sum(batch_losses)) / 2.
+                elif self.args.loss == "max":
+                    hinge_loss = (hinge_loss + max(batch_losses)) / 2.
+                else:
+                    hinge_loss = (hinge_loss + (sum(batch_losses) / float(len(batch_losses)))) / 2.
+                batch_losses = []
+
             assert len(id_labels) == len(cur_scores)
             ranks = (-cur_scores).argsort()
             ranked_labels = id_labels[ranks]
