@@ -28,8 +28,9 @@ class QRTPAPI:
 
         if layer.lower() == "lstm":
             from models import LstmQRTP as Model
-        elif layer.lower() == "bilstm":
-            from models import BiLstmQRTP as Model
+        elif layer.lower() in ["bilstm", "bigru"]:
+            from models import BiRNNQRTP as Model
+            raise Exception()
         elif layer.lower() == "cnn":
             from models import CnnQRTP as Model
         elif layer.lower() == "gru":
@@ -91,12 +92,12 @@ class QRTPAPI:
         ev = TPEvaluation(outputs, predictions, targets)
         # results = [round(ev.lr_ap_score(), 4), round(ev.lr_loss(), 4), round(ev.cov_error(), 4)]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
-        eval_labels = []
-        for label in range(targets.shape[1]):
-            if (targets[:, label] == np.ones(targets.shape[0])).any():
-                eval_labels.append(label)
-        print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
-        outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
+        # eval_labels = []
+        # for label in range(targets.shape[1]):
+        #     if (targets[:, label] == np.ones(targets.shape[0])).any():
+        #         eval_labels.append(label)
+        # print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
+        # outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
 
         eval_samples = []
         for sample in range(targets.shape[0]):
@@ -106,9 +107,6 @@ class QRTPAPI:
         outputs, predictions, targets = outputs[eval_samples, :], predictions[eval_samples, :], targets[eval_samples, :]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         ev = TPEvaluation(outputs, predictions, targets)
-        # results += [ev.precision_recall_fscore('macro'), ev.precision_recall_fscore('micro')]
-        print 'MACRO: ', ev.precision_recall_fscore('macro')
-        print 'MICRO: ', ev.precision_recall_fscore('micro')
 
         print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\n'.format(ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10))
         print 'R@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10))

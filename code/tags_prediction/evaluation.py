@@ -14,15 +14,6 @@ class Evaluation(object):
         self.predictions = predictions
         self.targets = targets
 
-    def lr_ap_score(self):
-        return label_ranking_average_precision_score(self.targets, self.outputs)
-
-    def cov_error(self):
-        return coverage_error(self.targets, self.outputs)
-
-    def lr_loss(self):
-        return label_ranking_loss(self.targets, self.outputs)
-
     def precision_recall_fscore(self, average='macro'):
         p, r, f, _ = precision_recall_fscore_support(self.targets, self.predictions, average=average)
         return round(100*p, 3), round(100*r, 3), round(100*f, 3)

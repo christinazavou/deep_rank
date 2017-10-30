@@ -181,7 +181,8 @@ def main():
         tuned_model = clf
 
     print 'EVALUATE ON DEV\n'
-    evaluate(x_dev, y_dev, tuned_model)
+    evaluate(x_dev, y_dev, tuned_model)  # in case of cross val don't look at dev eval
+
     print 'EVALUATE ON TEST\n'
     evaluate(x_test, y_test, tuned_model)
 
@@ -200,7 +201,7 @@ if __name__ == '__main__':
     argparser.add_argument("--max_df", type=float, default=0.75)
     argparser.add_argument("--n_grams", type=int, default=1)
     argparser.add_argument("--truncate", type=int, default=1)
-    argparser.add_argument("--njobs", type=int, default=3)
+    # argparser.add_argument("--njobs", type=int, default=3)
 
     argparser.add_argument("--cross_val", type=int, default=0)
 

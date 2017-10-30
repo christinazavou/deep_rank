@@ -66,12 +66,12 @@ class TPAPI:
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
-        eval_labels = []
-        for label in range(targets.shape[1]):
-            if (targets[:, label] == np.ones(targets.shape[0])).any():
-                eval_labels.append(label)
-        print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
-        outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
+        # eval_labels = []
+        # for label in range(targets.shape[1]):
+        #     if (targets[:, label] == np.ones(targets.shape[0])).any():
+        #         eval_labels.append(label)
+        # print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
+        # outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
 
         eval_samples = []
         for sample in range(targets.shape[0]):
@@ -92,8 +92,9 @@ class TPAPI:
             cols = np.argsort(sample_output)[-10:]
             rankedat10_tags = []
             for col in cols[::-1]:
-                label_id = eval_labels[col]
-                label_name = tag_names[label_id]
+                # label_id = eval_labels[col]
+                # label_name = tag_names[label_id]
+                label_name = tag_names[col]
                 rankedat10_tags.append(label_name)
             all_rankedat10_tags.append(rankedat10_tags)
 

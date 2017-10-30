@@ -126,12 +126,12 @@ class ModelMultiTagsClassifier(object):
             loss = np.mean(np.sum(x_entropy, 1))
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
-        eval_labels = []
-        for label in range(targets.shape[1]):
-            if (targets[:, label] == np.ones(targets.shape[0])).any():
-                eval_labels.append(label)
-        print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
-        outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
+        # eval_labels = []
+        # for label in range(targets.shape[1]):
+        #     if (targets[:, label] == np.ones(targets.shape[0])).any():
+        #         eval_labels.append(label)
+        # print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
+        # outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
 
         eval_samples = []
         for sample in range(targets.shape[0]):
