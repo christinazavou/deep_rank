@@ -2,7 +2,7 @@ import argparse
 import os
 import pickle
 import sys
-from datetime import datetime
+import time
 import numpy as np
 from nltk.tokenize import word_tokenize
 from nltk.stem import PorterStemmer
@@ -15,6 +15,17 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics.pairwise import cosine_similarity
 
 from evaluation import Evaluation
+import scipy.sparse
+from sklearn.utils import shuffle
+
+import logging
+from Queue import Full
+from multiprocessing import Queue, Pool
+import itertools
+import random
+from multiprocessing import freeze_support
+
+logging.basicConfig(level=logging.INFO)
 
 
 def read_df(df_file, chunk_size=None, read_columns=None):
@@ -35,8 +46,9 @@ def read_df(df_file, chunk_size=None, read_columns=None):
         raise Exception(' unknown pandas file {}'.format(df_file))
 
 
-def get_data(df, type_name, labels):
-    df = df[df['type'] == type_name]
+def get_data(df, labels, type_name=None):
+    if type_name is not None:
+        df = df[df['type'] == type_name]
     if args.truncate:
         return (df['title'] + u' ' + df['body_truncated']).values, df[labels].values
     else:
@@ -57,14 +69,18 @@ class MLRComponent(object):
         self.model_file = model_file
         if model_file and os.path.isfile(self.model_file):
             self.clf = pickle.load(open(self.model_file, 'rb'))
+            print 'mlr component loaded'
         else:
             self.clf = None
 
     def fit(self, x_train, y_train):
         if self.clf is None:
+            start_time = time.time()
+            print 'please wait while mlr component is trained'
             self.clf = OneVsRestClassifier(MultinomialNB(), n_jobs=1)
             self.clf.fit(x_train, y_train)
             pickle.dump(self.clf, open(self.model_file, 'wb'), protocol=2)
+            print 'mlr component finished training after {} minutes'.format((time.time()-start_time) // 60)
 
     def predict_proba(self, x):
         return self.clf.predict_proba(x)
@@ -79,40 +95,56 @@ class SimComponent(object):
 
     def fit(self, x_train, y_train):
         x_train = self.tf_idf_trans.fit_transform(x_train)
-        print 'x_train shape ', x_train.shape
         self.x_train = x_train
         self.y_train = y_train
 
     def predict_proba(self, x_eval):
         x_eval = self.tf_idf_trans.transform(x_eval)
-        y_scores = []
-        for x in x_eval:
-            similarities = cosine_similarity(self.x_train, x)
-            top_50 = np.argsort(similarities, 0)[:50]
-            top_50 = top_50.reshape(50)
-            top_50_y = self.y_train[top_50, :]
-            vote_per_tag = np.sum(top_50_y, 0)
-            sum_not_per_tag = np.zeros(len(vote_per_tag))
-            score_per_rank = np.zeros(len(vote_per_tag))
-            for i, vote in enumerate(vote_per_tag):
-                sum_not_per_tag[i] = np.sum(vote_per_tag[:i]) + np.sum(vote_per_tag[(i+1):])
-                if vote == 0:
-                    score_per_rank[i] = 0
-                else:
-                    score_per_rank[i] = vote / sum_not_per_tag[i]
-            y_scores.append(score_per_rank)
-        return np.array(y_scores)
+        y_scores = []  # per sample
+
+        similarities = cosine_similarity(self.x_train, x_eval).T  # num_of_eval_samples x num_of_train_samples
+        # argsort gives the less similar first
+        top_50_per_sample = np.argsort(similarities, 1)[:, -50:]  # num_of_eval_samples x 50
+
+        for top_50 in top_50_per_sample:
+
+            top_50_y = self.y_train[top_50, :]  # 50 x num_of_tags
+
+            vote_per_tag = np.sum(top_50_y, 0)  # num_of_tags
+            sum_per_not_tag = np.sum(vote_per_tag) - vote_per_tag  # num_of_tags
+            score_per_tag = vote_per_tag.astype(np.float32) / (sum_per_not_tag.astype(np.float32) + 1e-9)  # num_of_tags
+
+            y_scores.append(score_per_tag)
+
+        return np.array(y_scores)  # num_of_samples x num_of_tags
 
 
 class TagTermComponent(object):
 
-    def __init__(self):
-        self.affinity_term_tag = None
+    def __init__(self, model_file):
+        self.model_file = model_file
+        if os.path.isfile(model_file):
+            self.affinity_term_tag = pickle.load(open(self.model_file, 'rb'))
+            print 'tt component loaded'
+        else:
+            self.affinity_term_tag = None
 
     def fit(self, x_train, y_train):
-        n_term_tag = np.matmul(x_train.toarray().T, y_train)  # num_of_terms x num_of_tags
-        n_tag = np.sum(y_train, 0)
-        self.affinity_term_tag = n_term_tag / (n_tag + 1e-9)  # num_of_terms x num_of_tags
+        if self.affinity_term_tag is None:
+            print 'please wait until affinity scores are calculated'
+            start_time = time.time()
+            # split into multiple matmul since memory consumption is huge
+            idx_s = 0
+            batch_size = 200
+            n_term_tag = np.zeros((x_train.shape[1], y_train.shape[1]))
+            while idx_s < x_train.shape[1]-1:
+                idx_e = min(idx_s + batch_size, x_train.shape[1]-1)
+                n_term_tag[idx_s: idx_e] = np.matmul(x_train[:, idx_s:idx_e].toarray().T, y_train)
+                idx_s = idx_e
+            n_tag = np.sum(y_train, 0)  # num_of_tags
+            self.affinity_term_tag = n_term_tag / (n_tag + 1e-9)  # num_of_terms x num_of_tags
+            pickle.dump(self.affinity_term_tag, open(self.model_file, 'wb'), protocol=2)
+            print 'affinity scores calculated after {} minutes'.format((time.time()-start_time) // 60)
 
     def predict_proba(self, x):
         y_scores = []
@@ -122,110 +154,193 @@ class TagTermComponent(object):
         return np.array(y_scores)
 
 
-def evaluate(test_x, test_y, y_scores):
-    """"""
+def evaluate(test_y, y_scores, verbose=0):
     """------------------------------------------remove ill evaluation-------------------------------------------"""
     eval_labels = []
     for label in range(test_y.shape[1]):
         if (test_y[:, label] == np.ones(test_y.shape[0])).any():
             eval_labels.append(label)
-    print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), test_y.shape[1])
     eval_samples = []
     for sample in range(test_y.shape[0]):
         if (test_y[sample, :] == np.ones(test_y.shape[1])).any():
             eval_samples.append(sample)
-    print '\n{} samples ouf of {} will be evaluated (zero-labeled-samples removed).'.format(len(eval_samples), test_y.shape[0])
-    print type(test_y), test_y.shape
-    test_x = test_x[eval_samples, :]
-    test_y = test_y[eval_samples, :]
-    test_y = test_y[:, eval_labels]
-    print test_x.shape, test_x.dtype, type(test_x), test_y.shape, test_y.dtype, type(test_y)
-    """------------------------------------------remove ill evaluation-------------------------------------------"""
-    y_scores = y_scores[eval_samples, :]
-    y_scores = y_scores[:, eval_labels]
+
+    test_y, y_scores = test_y[eval_samples, :], y_scores[eval_samples, :]
+    test_y, y_scores = test_y[:, eval_labels], y_scores[:, eval_labels]
 
     ev = Evaluation(y_scores, None, test_y)
 
-    return (ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
-            ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10))
+    if verbose:
+        print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(
+            ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
+            ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10)
+        )
+    return ev.Recall(10)
 
 
-def effective_weights(x_train, y_train, x_dev, y_dev):   # , sample_size, performance
+def worker_eval(input_queue, result_queue):
+    while True:
+        logging.info("getting a new job")
+        combo_rat10 = {}
+        chunk_no, chunk, probs_mlr, probs_sim, probs_tt, targets = input_queue.get()
+        for combo in chunk:
+            [alpha, beta, gamma] = combo
+            probs = alpha*probs_mlr + beta*probs_sim + gamma*probs_tt
+            rat10 = evaluate(targets, probs)
+            combo_rat10[(alpha, beta, gamma)] = rat10
+        logging.info("processed chunk, queuing the result")
+        result_queue.put(combo_rat10)
 
-    tt = TagTermComponent()
-    mlr = MLRComponent(args.model_file)
-    sim = SimComponent()
-    tt.fit(x_train, y_train)
+
+def chunk_serial(iterable, chunk_size):
+    it = iter(iterable)
+    while True:
+        wrapped_chunk = [list(itertools.islice(it, int(chunk_size)))]
+        if not wrapped_chunk[0]:
+            break
+        yield wrapped_chunk.pop()
+
+
+def find_texts_parallel(probs_mlr, probs_sim, probs_tt, targets, workers=2):
+    job_queue = Queue(2*workers)
+    result_queue = Queue()
+
+    pool = Pool(workers, worker_eval, (job_queue, result_queue,))
+    queue_size = [0]  # integer can't be accessed in inner definition so list used
+    all_combo_rat10 = {}
+
+    def process_result_queue():
+        """Clear the result queue, merging all intermediate results"""
+        while not result_queue.empty():
+            combos_rat10 = result_queue.get()
+
+            for combo, rat10 in combos_rat10.iteritems():
+                # add to the existing one. If we had one dict to update, each time it would keep the current text found
+                all_combo_rat10.setdefault(combo, 0)
+                all_combo_rat10[combo] += rat10
+
+            queue_size[0] -= 1
+
+    values = [
+        [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0],
+        [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0],
+        [0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8,0.9,1.0]
+    ]
+    combos = list(itertools.product(*values))
+    total_combos = len(combos)
+    for chunk_no, chunk in enumerate(chunk_serial(combos, 400)):
+        # put the chunk into the workers' input job queue
+        chunk_put = False
+        while not chunk_put:
+            try:
+                job_queue.put((chunk_no, chunk, probs_mlr, probs_sim, probs_tt, targets), block=False)
+                chunk_put = True
+                queue_size[0] += 1
+                logging.info('PROGRESS: dispatched chunk {} = '
+                             'combos up to {}, over {} combos, outstanding queue size {}'.
+                             format(chunk_no, chunk_no * 400 + len(chunk), total_combos, queue_size[0]))
+            except Full:
+                # in case the input job queue is full, keep clearing the result queue to make sure we don't deadlock
+                process_result_queue()
+
+        process_result_queue()
+
+    while queue_size[0] > 0:  # wait for all outstanding jobs to finish
+        process_result_queue()
+
+    pool.terminate()
+
+    return all_combo_rat10
+
+
+def effective_weights(x_train, y_train, x_dev, y_dev, njobs=3):   # , sample_size, performance
+
+    mlr = MLRComponent(args.model_file_mlr)
     mlr.fit(x_train, y_train)
-    sim.fit(x_train, y_train)
-
-    tt_probs = tt.predict_proba(x_dev)
     mlr_probs = mlr.predict_proba(x_dev)
-    sim_probs = sim.predict_proba(x_dev)
+    # evaluate(y_dev, mlr_probs)
 
-    best_performance = -1
-    best_weights = (0, 0, 0)
-    for alpha in np.linspace(0, 1, 10):
-        for beta in np.linspace(0, 1, 10):
-            for gama in np.linspace(0, 1, 10):
-                probs = alpha*mlr_probs + beta*sim_probs + gama*tt_probs
-                (p1, p3, p5, p10, r1, r3, r5, r10) = evaluate(x_dev, y_dev, probs)
-                if r10 > best_performance:
-                    best_weights = (alpha, beta, gama)
-                    best_performance = r10
-                    print 'alpha beta gama ', alpha, beta, gama
-                    print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(
-                        p1, p3, p5, p10, r1, r3, r5, r10
-                    )
-    return best_weights, tt, mlr, sim
+    sim = SimComponent()
+    sim.fit(x_train, y_train)
+    sim_probs = sim.predict_proba(x_dev)
+    # evaluate(y_dev, sim_probs)
+
+    tt = TagTermComponent(args.model_file_tt)
+    tt.fit(x_train, y_train)
+    tt_probs = tt.predict_proba(x_dev)
+    # evaluate(y_dev, tt_probs)
+
+    start_time = time.time()
+    combo_results = find_texts_parallel(mlr_probs, sim_probs, tt_probs, y_dev, workers=njobs)
+
+    print 'took {} minutes for all combinations '.format((time.time()-start_time) // 60)
+    sorted_results = sorted(combo_results.items(), key=lambda x: x[1])[::-1]
+    print '\n', sorted_results, '\n'
+    print 'best combo: {}'.format(sorted_results[0])
+    return sorted_results[0][0], tt, mlr, sim
 
 
 def main():
-    print 'Starting at: ', str(datetime.now())
 
     df = read_df(args.df_path)
     df = df.fillna(u'')
     label_tags = pickle.load(open(args.tags_file, 'rb'))
     print '\nloaded {} tags'.format(len(label_tags))
 
-    x_train, y_train = get_data(df, 'train', label_tags)
-    x_dev, y_dev = get_data(df, 'dev', label_tags)
-    x_test, y_test = get_data(df, 'test', label_tags)
+    if not args.cross_val:
+        x_train, y_train = get_data(df, label_tags, 'train')
+        x_dev, y_dev = get_data(df, label_tags, 'dev')
+        x_test, y_test = get_data(df, label_tags, 'test')
+    else:
+        x, y = get_data(df, label_tags)
+        x, y = shuffle(x, y)
+        total = len(x)
+        train_total = total * 0.8
+        dev_total = train_total * 0.2
+        x_dev, y_dev = x[0: int(dev_total)], y[0: int(dev_total)]
+        x_train, y_train = x[int(dev_total): int(train_total)], y[int(dev_total): int(train_total)]
+        x_test, y_test = x[int(train_total):], y[int(train_total):]
     del df
-
-    if args.test:
-        x_train, y_train = x_train[0:1000], y_train[0:1000]
 
     bow_vec = CountVectorizer(min_df=20, max_df=1.0, ngram_range=(1, 1), binary=True)
     x_train = bow_vec.fit_transform(x_train)
-    print 'x_train shape ', x_train.shape
-
     x_dev = bow_vec.transform(x_dev)
-    (alpha, beta, gama), tt, mlr, sim = effective_weights(x_train, y_train, x_dev, y_dev)
-
     x_test = bow_vec.transform(x_test)
-    tt_probs = tt.predict_proba(x_test)
+
+    print 'shapes ', x_train.shape, y_train.shape, x_dev.shape, y_dev.shape, x_test.shape, y_test.shape
+
+    (alpha, beta, gama), tt, mlr, sim = effective_weights(x_train, y_train, x_dev, y_dev, args.njobs)
+
+    mlr_probs = mlr.predict_proba(x_dev)
+    sim_probs = sim.predict_proba(x_dev)
+    tt_probs = tt.predict_proba(x_dev)
+    probs = alpha*mlr_probs + beta*sim_probs + gama*tt_probs
+    print 'dev evaluation: '
+    evaluate(y_dev, probs, 1)
+
     mlr_probs = mlr.predict_proba(x_test)
     sim_probs = sim.predict_proba(x_test)
+    tt_probs = tt.predict_proba(x_test)
     probs = alpha*mlr_probs + beta*sim_probs + gama*tt_probs
-    (p1, p3, p5, p10, r1, r3, r5, r10) = evaluate(x_test, y_test, probs)
-    print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(
-        p1, p3, p5, p10, r1, r3, r5, r10
-    )
+    print 'test evaluation: '
+    evaluate(y_test, probs, 1)
 
 
 if __name__ == '__main__':
+    freeze_support()
 
     argparser = argparse.ArgumentParser(sys.argv[0])
-    argparser.add_argument("--df_path", type=str, default="/home/christina/Documents/Thesis/data/askubuntu/additional/data_frame_corpus_str.csv")
-    argparser.add_argument("--tags_file", type=str, default="/home/christina/Documents/Thesis/data/askubuntu/additional/tags_files/valid_train_tags.p")
-    argparser.add_argument("--model_file", type=str, default="/media/christina/Data/Thesis/models/askubuntu/tags_prediction/R@10/corpus908/TagCombine/model.p")
+    argparser.add_argument("--df_path", type=str, default="")
+    argparser.add_argument("--tags_file", type=str, default="")
+    argparser.add_argument("--model_file_mlr", type=str, default="")
+    argparser.add_argument("--model_file_tt", type=str, default="")
 
     argparser.add_argument("--truncate", type=int, default=1)
-    argparser.add_argument("--njobs", type=int, default=2)
-    argparser.add_argument("--test", type=int, default=0)
+    argparser.add_argument("--njobs", type=int, default=3)
+    argparser.add_argument("--cross_val", type=int, default=0)
 
     args = argparser.parse_args()
     print args
     main()
+
 

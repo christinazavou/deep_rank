@@ -15,9 +15,6 @@ def main():
     df = df.fillna(u'')
 
     label_tags = pickle.load(open(args.tags_file, 'rb'))
-    if isinstance(label_tags, dict):
-        print 'from dict labels to list.'
-        label_tags = label_tags.keys()
     print '\nloaded {} tags'.format(len(label_tags))
 
     raw_corpus = myio.read_corpus(args.corpus_w_tags, with_tags=True)
@@ -111,6 +108,7 @@ if __name__ == '__main__':
     argparser.add_argument("--concat", type=int, default=0)
     argparser.add_argument("--threshold", type=float, default=0.5)
     argparser.add_argument("--performance", type=str, default="R@10")  # P@5, R@10
+    argparser.add_argument("--loss", type=str, default="mean")  # P@5, R@10
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

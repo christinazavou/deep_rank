@@ -28,23 +28,36 @@ class Evaluation(object):
         return round(100*p, 3), round(100*r, 3), round(100*f, 3)
 
     # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.
-    def Recall(self, precision_at):
+    def Recall(self, precision_at, return_all=False):
         cols = np.argsort(self.outputs, 1)[:, -precision_at:]  # because argsort makes in ascending order
         rel_per_sample = np.sum(self.targets, 1)
         found_per_sample = np.zeros(self.outputs.shape[0])
         for sample, c in enumerate(cols):
             result = self.targets[sample, c]
             found_per_sample[sample] = np.sum(result == 1)
+        if return_all:
+            return np.round(100*found_per_sample/rel_per_sample.astype(np.float32), 3)
         return round(100 * np.mean(found_per_sample / rel_per_sample.astype(np.float32)), 3)
 
     # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.
-    def Precision(self, precision_at):
+    def Precision(self, precision_at, return_all=False):
         cols = np.argsort(self.outputs, 1)[:, -precision_at:]  # because argsort makes in ascending order
         found_per_sample = np.zeros(self.outputs.shape[0])
         for sample, c in enumerate(cols):
             result = self.targets[sample, c]
             found_per_sample[sample] = np.sum(result == 1)
+        if return_all:
+            return np.round(100*found_per_sample/float(precision_at), 3)
         return round(100 * np.mean(found_per_sample / float(precision_at)), 3)
+
+    # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.
+    def upper_bound(self, precision_at, return_all=False):
+        all_retrieved = np.sum(self.targets, 1)
+        upper_bounds = all_retrieved / float(precision_at)
+        if return_all:
+            return np.round(100*upper_bounds, 3)
+        return round(100*np.mean(upper_bounds), 3)
+    # in fact, if R@5 is 100% but P@5 is not 100% it means we retrieved all the true elements
 
     def ConfusionMatrix(self, heatmap_at):
         outputs = self.outputs

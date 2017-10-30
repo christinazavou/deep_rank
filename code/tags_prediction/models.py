@@ -77,7 +77,12 @@ class ModelMultiTagsClassifier(object):
                     # x-entropy == 1.15 it means that under the compression the model does on the data, we carry about
                     # 1.15 bits of information per sample (need 1.5 bits to represent a sample), on average."""
                     x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
-                    self.loss = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                    if 'loss' in self.args and self.args.loss == "sum":
+                        self.loss = tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                    elif 'loss' in self.args and self.args.loss == "max":
+                        self.loss = tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                    else:
+                        self.loss = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -113,7 +118,12 @@ class ModelMultiTagsClassifier(object):
 
         # outputs are passed through sigmoid, thus they lie in (0,1)
         x_entropy = targets * (-np.log(outputs)) + (1.0 - targets) * (-np.log(1.0 - outputs))
-        loss = np.mean(np.sum(x_entropy, 1))
+        if 'loss' in self.args and self.args.loss == "sum":
+            loss = np.sum(np.sum(x_entropy, 1))
+        elif 'loss' in self.args and self.args.loss == "max":
+            loss = np.max(np.sum(x_entropy, 1))
+        else:
+            loss = np.mean(np.sum(x_entropy, 1))
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_labels = []

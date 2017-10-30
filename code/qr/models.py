@@ -52,9 +52,9 @@ class ModelQR(object):
             with tf.name_scope('loss'):
                 diff = neg_scores - pos_scores + 1.0
                 # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
-                if self.args.loss == 'max':
+                if 'loss' in self.args and self.args.loss == 'max':
                     loss = tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff)
-                elif self.args.loss == 'sum':
+                elif 'loss' in self.args and self.args.loss == 'sum':
                     loss = tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff)
                 else:
                     loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
@@ -129,9 +129,9 @@ class ModelQR(object):
             if mml is not None:
                 batch_losses.append(mml)
             if (sample % self.args.batch_size == 0)or (sample == len(data) - 1):
-                if self.args.loss == "sum":
+                if 'loss' in self.args and self.args.loss == "sum":
                     hinge_loss = (hinge_loss + sum(batch_losses)) / 2.
-                elif self.args.loss == "max":
+                elif 'loss' in self.args and self.args.loss == "max":
                     hinge_loss = (hinge_loss + max(batch_losses)) / 2.
                 else:
                     hinge_loss = (hinge_loss + (sum(batch_losses) / float(len(batch_losses)))) / 2.
@@ -385,6 +385,7 @@ class ModelQR(object):
         with gzip.open(path) as fin:
             data = pickle.load(fin)
         self.args = data["args"]
+        print '\nLoaded args:\n', self.args, '\n'
         self.ready()
         assign_ops = self.load_trained_vars(path)
         sess.run(tf.global_variables_initializer())
@@ -580,8 +581,6 @@ class BiRNNQR(ModelQR):
 
     def __init__(self, args, embedding_layer, weights=None):
         self.args = args
-        if args is not None and args.average is 0:  # i.e. concatenation of states will be used
-            assert self.args.hidden_dim % 2 == 0, ' can not concat. either use average 1 or an even hidden dimension '
         self.embedding_layer = embedding_layer
         self.embeddings = embedding_layer.embeddings
         self.padding_id = embedding_layer.vocab_map["<padding>"]
