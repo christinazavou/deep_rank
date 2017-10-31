@@ -158,23 +158,20 @@ def main():
 
         else:
 
-            #     x_train, y_train = shuffle(x_train, y_train)
-            #     tx = scipy.sparse.vstack([x_train, x_dev])
-            #     ty = np.vstack((y_train, y_dev))
-            #     test_fold = [0 for _ in x_train] + [-1 for _ in x_dev]
-            #     ps = PredefinedSplit(test_fold)
-            #     clf = OneVsRestClassifier(CalibratedClassifierCV(clf, cv=ps), n_jobs=1)
-            #     clf.fit(tx, ty)
-
-            # x_train, y_train = shuffle(x_train, y_train)
-            # clf = OneVsRestClassifier(CalibratedClassifierCV(clf), n_jobs=1)
+            # clf = OneVsRestClassifier(clf)
             # clf.fit(x_train, y_train)
 
-            # clf = SVC(kernel='linear', probability=True, verbose=True)
-            # clf = OneVsRestClassifier(clf, n_jobs=args.njobs)
-            # clf.fit(x_train, y_train)
-
-            clf = OneVsRestClassifier(clf)
+            from sklearn.ensemble import BaggingClassifier
+            n_estimators = 10
+            clf = OneVsRestClassifier(
+                BaggingClassifier(
+                    SVC(kernel='linear', probability=True, class_weight='auto', verbose=1),
+                    max_samples=1.0 / n_estimators,
+                    n_estimators=n_estimators,
+                    n_jobs=args.njobs,
+                    verbose=1
+                )
+            )
             clf.fit(x_train, y_train)
 
         save_model(clf, args.model_file)
@@ -201,7 +198,7 @@ if __name__ == '__main__':
     argparser.add_argument("--max_df", type=float, default=0.75)
     argparser.add_argument("--n_grams", type=int, default=1)
     argparser.add_argument("--truncate", type=int, default=1)
-    # argparser.add_argument("--njobs", type=int, default=3)
+    argparser.add_argument("--njobs", type=int, default=3)
 
     argparser.add_argument("--cross_val", type=int, default=0)
 
