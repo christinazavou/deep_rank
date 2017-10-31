@@ -35,8 +35,8 @@ else:
     print '\nbad_queries: {}\n'.format(bad_queries)
 
     # best queries are defined based on the results of model 1 (or given from a file)
-    # based on whether 3 out 5 true positives where found up to rank 5
-    best_queries = [r[0] for r in R_1 if r[4].count(1) > 5 and r[8] > 60]  # ---------CAN CHANGE THIS VALUE----------
+    # based on whether MAP >= 75% i.e. most of the similar cases ranked first (only care if similar candidate was given)
+    best_queries = [r[0] for r in R_1 if r[5] >= 75]  # ---------CAN CHANGE THIS VALUE----------
     print '\nbest_queries: {}\n'.format(best_queries)
     ids = {'bad_queries': bad_queries, 'best_queries': best_queries}
     if args.save_ids:
@@ -52,20 +52,30 @@ if args.results2:
 
     # plot differences (one positive difference means model 1 wins in one query)
 
-    differences = np.array(PAT1_model1) - np.array(PAT1_model2)
+    differences = np.array(PAT1_model1) - np.array(PAT1_model2) + 1
     # print differences
     print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
     plt.figure()
     plt.bar(range(len(differences)), sorted(differences, reverse=True))
-    # plt.plot(differences, '.')
+    # plt.plot(range(len(differences)), sorted(differences, reverse=True), 'o')
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
     plt.ylim([-100, 100])
-    plt.savefig(args.fig.replace('.png', 'pat1diff.png'))
+    if not args.fig:
+        plt.show()
+    else:
+        plt.savefig(args.fig.replace('.png', 'pat1diff.png'))
 
-    differences = np.array(PAT5_model1) - np.array(PAT5_model2)
+    differences = np.array(PAT5_model1) - np.array(PAT5_model2) + 1
     # print differences
     print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
     plt.figure()
-    # plt.plot(differences, '.')
     plt.bar(range(len(differences)), sorted(differences, reverse=True))
+    # plt.plot(range(len(differences)), sorted(differences, reverse=True), 'o')
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
     plt.ylim([-100, 100])
-    plt.savefig(args.fig.replace('.png', 'pat5diff.png'))
+    if not args.fig:
+        plt.show()
+    else:
+        plt.savefig(args.fig.replace('.png', 'mapdiff.png'))

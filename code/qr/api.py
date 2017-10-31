@@ -135,3 +135,5 @@ if __name__ == '__main__':
                         print_ranked_labels,
                         testmap[i], testmrr[i], testpat1[i], testpat5[i]
                     ))
+
+# after running api and getting results you can run analyzencompareresults and then printspecialcases :)
