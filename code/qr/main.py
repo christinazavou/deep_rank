@@ -7,6 +7,7 @@ import os
 
 
 def main():
+    print 'Starting at: {}\n'.format(time.time())
     raw_corpus = myio.read_corpus(args.corpus)
     embedding_layer = create_embedding_layer(
         n_d=args.hidden_dim,
@@ -70,6 +71,7 @@ def main():
             dev=dev if args.dev else None,
             test=test if args.test else None
         )
+    print '\nEnded at: {}'.format(time.time())
 
 
 if __name__ == "__main__":
