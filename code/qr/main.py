@@ -4,10 +4,11 @@ import sys
 from utils import load_embedding_iterator, create_embedding_layer
 import time
 import os
+import datetime
 
 
 def main():
-    print 'Starting at: {}\n'.format(time.time())
+    print 'Starting at: {}\n'.format(datetime.now())
     raw_corpus = myio.read_corpus(args.corpus)
     embedding_layer = create_embedding_layer(
         n_d=args.hidden_dim,
@@ -71,7 +72,7 @@ def main():
             dev=dev if args.dev else None,
             test=test if args.test else None
         )
-    print '\nEnded at: {}'.format(time.time())
+    print '\nEnded at: {}'.format(datetime.now())
 
 
 if __name__ == "__main__":

@@ -10,7 +10,7 @@ from utils import load_embedding_iterator, create_embedding_layer
 
 
 def main():
-    print 'Starting at: {}\n'.format(time.time())
+    print 'Starting at: {}\n'.format(datetime.now())
     s_time = time.time()
     df = read_df(args.df_path)
     df = df.fillna(u'')
@@ -72,7 +72,7 @@ def main():
     print '\nmodel init_assign_ops: {}\n'.format(model.init_assign_ops)
 
     model.train_model(train, dev=dev, test=test)
-    print '\nEnded at: {}'.format(time.time())
+    print '\nEnded at: {}'.format(datetime.now())
 
 
 if __name__ == '__main__':
