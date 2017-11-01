@@ -4,7 +4,7 @@ import sys
 from utils import load_embedding_iterator, create_embedding_layer
 import time
 import os
-import datetime
+from datetime import datetime
 
 
 def main():
