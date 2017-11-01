@@ -85,6 +85,7 @@ if __name__ == '__main__':
 
     argparser.add_argument("--use_embeddings", type=int, default=1)
     argparser.add_argument("--trainable", type=int, default=1)
+    argparser.add_argument("--trainable_encoder", type=int, default=1)
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)

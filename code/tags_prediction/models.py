@@ -14,6 +14,8 @@ class ModelMultiTagsClassifier(object):
     def ready(self):
         self._initialize_placeholders_graph()
         self._initialize_encoder_graph()
+        for param in tf.trainable_variables():
+            self.encoder_params.append(param.name)
         self._initialize_output_graph()
         for param in tf.trainable_variables():
             self.params[param.name] = param
@@ -192,6 +194,13 @@ class ModelMultiTagsClassifier(object):
 
             best_dev_performance = -1
 
+            # Fine Encoder's params (and embeddings)
+            non_encoder_params = []
+            for param_name, param in self.params.iteritems():
+                if param_name not in self.encoder_params:
+                    non_encoder_params.append(param)
+            print '\nnon encoder params {}\n'.format(non_encoder_params)
+
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
             if self.args.optimizer == "adam":
@@ -200,8 +209,11 @@ class ModelMultiTagsClassifier(object):
                 optimizer = tf.train.AdagradOptimizer(self.args.learning_rate)
             else:
                 optimizer = tf.train.GradientDescentOptimizer(self.args.learning_rate)
-            grads_and_vars = optimizer.compute_gradients(self.cost)
-            train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+
+            if self.args.trainable_encoder:
+                train_op = optimizer.minimize(self.cost, global_step=global_step)
+            else:
+                train_op = optimizer.minimize(self.cost, global_step=global_step, var_list=non_encoder_params)
 
             sess.run(tf.global_variables_initializer())
             emb = sess.run(self.embeddings)
@@ -468,6 +480,7 @@ class LstmMultiTagsClassifier(ModelMultiTagsClassifier):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        self.encoder_params = []
         if embedding_layer.init_embeddings is not None:
             assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
             self.init_assign_ops = {self.embeddings: assign_op}
@@ -608,6 +621,7 @@ class BiRNNMultiTagsClassifier(ModelMultiTagsClassifier):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        self.encoder_params = []
         if embedding_layer.init_embeddings is not None:
             assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
             self.init_assign_ops = {self.embeddings: assign_op}
@@ -801,6 +815,7 @@ class CnnMultiTagsClassifier(ModelMultiTagsClassifier):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        self.encoder_params = []
         if embedding_layer.init_embeddings is not None:
             assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
             self.init_assign_ops = {self.embeddings: assign_op}
@@ -939,6 +954,7 @@ class GruMultiTagsClassifier(ModelMultiTagsClassifier):
         self.weights = weights
         self.output_dim = output_dim
         self.params = {}
+        self.encoder_params = []
         if embedding_layer.init_embeddings is not None:
             assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
             self.init_assign_ops = {self.embeddings: assign_op}
