@@ -406,24 +406,19 @@ class ModelMultiTagsClassifier(object):
         assert self.args is not None and self.params != {}
         assign_ops = {}
         with gzip.open(path) as fin:
+            graph = tf.get_default_graph()
             data = pickle.load(fin)
             assert self.args.hidden_dim == data["args"].hidden_dim, 'you are trying to load model with {} hid-dim, '\
                 'while your model has {} hid dim'.format(data["args"].hidden_dim, self.args.hidden_dim)
             params_values = data['params_values']
-            graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
+                if (self.args.load_only_embeddings == 1) and (param_name != self.embeddings.name):
+                    print 'skip {} reason: load only embeddings'.format(param_name)
+                    continue
                 if param_name in self.params:
                     print param_name, ' is in my dict'
-                    try:
-                        variable = graph.get_tensor_by_name(param_name)
-                        assign_op = tf.assign(variable, param_value)
-                        assign_ops[param_name] = assign_op
-                    except:
-                        raise Exception("{} not found in my graph. you are probably loading weights from a model "
-                                        "trained on different amount of outputs-tags. also set use_embeddings to 1".
-                                        format(param_name))
-                        # note: use_embeddings 0 is causing error for unknown reason but anyway here we reset embeddings
-                        # with the loaded ones
+                    variable = self.params[param_name]
+                    assign_ops[param_name] = tf.assign(variable, param_value)
                 else:
                     print param_name, ' is not in my dict'
         return assign_ops

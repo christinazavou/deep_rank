@@ -22,7 +22,7 @@ def main():
     raw_corpus = myio.read_corpus(args.corpus_w_tags, with_tags=True)
 
     embedding_layer = create_embedding_layer(
-        n_d=240,
+        n_d=200,
         embs=load_embedding_iterator(args.embeddings),
         only_words=False if args.use_embeddings else True,
         # only_words will take the words from embedding file and make random initial embeddings
@@ -89,6 +89,8 @@ if __name__ == '__main__':
     argparser.add_argument("--use_embeddings", type=int, default=1)
     argparser.add_argument("--trainable", type=int, default=1)
     argparser.add_argument("--trainable_encoder", type=int, default=1)
+    argparser.add_argument("--load_only_embeddings", type=int, default=0)  # refers to word embeddings
+
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)

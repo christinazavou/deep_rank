@@ -11,7 +11,7 @@ def main():
     print 'Starting at: {}\n'.format(datetime.now())
     raw_corpus = myio.read_corpus(args.corpus)
     embedding_layer = create_embedding_layer(
-        n_d=args.hidden_dim,
+        n_d=200,
         embs=load_embedding_iterator(args.embeddings),
         only_words=False if args.use_embeddings else True,
         trainable=args.trainable
@@ -84,8 +84,10 @@ if __name__ == "__main__":
     argparser.add_argument("--embeddings", type=str, default="")
     argparser.add_argument("--load_pre_trained_part", type=str, default="")
 
-    argparser.add_argument("--use_embeddings", type=int, default=1)
-    argparser.add_argument("--trainable", type=int, default=1)
+    argparser.add_argument("--use_embeddings", type=int, default=1)  # refers to word embeddings
+    argparser.add_argument("--trainable", type=int, default=1)  # refers to word embeddings
+    argparser.add_argument("--load_only_embeddings", type=int, default=0)  # refers to word embeddings
+
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)
