@@ -44,21 +44,16 @@ class ModelQR(object):
             pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
             # num query * candidate size
             neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
-            # num query
-            neg_scores = tf.reduce_max(neg_scores, axis=1)
 
         with tf.name_scope('cost'):
+            # h_final can have negative values, pos_scores and neg_scores have values in [0,1]
 
             with tf.name_scope('loss'):
-                diff = neg_scores - pos_scores + 1.0
-                # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
-                if 'loss' in self.args and self.args.loss == 'max':
-                    loss = tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff)
-                elif 'loss' in self.args and self.args.loss == 'sum':
-                    loss = tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff)
+                if self.args.entropy:
+                    self.loss = self.entropy_loss(neg_scores, pos_scores)
                 else:
-                    loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
-                self.loss = loss
+                    self.loss = self.modified_hinge_loss(neg_scores, pos_scores)
+                    # self.loss = self.hinge_loss(neg_scores, pos_scores)
 
             with tf.name_scope('regularization'):
                 l2_reg = 0.
@@ -67,6 +62,53 @@ class ModelQR(object):
                 self.l2_reg = l2_reg
 
             self.cost = self.loss + self.l2_reg
+
+    def hinge_loss(self, neg_scores, pos_scores):
+        # num query
+        neg_scores = tf.reduce_max(neg_scores, axis=1)
+
+        diff = neg_scores - pos_scores + 1.0
+
+        # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
+        if 'loss' in self.args and self.args.loss == 'max':
+            loss = tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+        elif 'loss' in self.args and self.args.loss == 'sum':
+            loss = tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+        else:
+            loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+        return loss
+
+    def modified_hinge_loss(self, neg_scores, pos_scores):
+
+        diff = neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.0
+        # diff = tf.cast(neg_scores >= tf.reshape(pos_scores, [-1, 1]), tf.float32) * diff
+
+        if 'loss' in self.args and self.args.loss == 'max':
+            loss = tf.reduce_max(tf.reduce_sum(diff, 1), name='hinge_loss')
+        elif 'loss' in self.args and self.args.loss == 'sum':
+            loss = tf.reduce_sum(tf.reduce_sum(diff, 1), name='hinge_loss')
+        else:
+            loss = tf.reduce_mean(tf.reduce_sum(diff, 1), name='hinge_loss')
+        return loss
+
+    def entropy_loss(self, all_neg_scores, pos_scores):
+        raise Exception()
+        outputs = tf.concat([tf.reshape(pos_scores, [-1, 1]), all_neg_scores], 1)
+        targets = tf.concat(
+            [tf.reshape(tf.ones_like(pos_scores), [-1, 1]), tf.zeros_like(all_neg_scores, tf.float32)], 1)
+
+        self.OUTPUTS = outputs
+        self.TARGETS = targets
+        # outputs lie in (0,1)
+        x_entropy = targets * (-tf.log(outputs)) + (1.0 - targets) * (-tf.log(1.0 - outputs))
+        self.ENTROPY = x_entropy
+
+        if 'loss' in self.args and self.args.loss == "sum":
+            return tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+        elif 'loss' in self.args and self.args.loss == "max":
+            return tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+        else:
+            return tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):

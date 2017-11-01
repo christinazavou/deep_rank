@@ -71,18 +71,13 @@ class ModelMultiTagsClassifier(object):
             )
 
             with tf.name_scope('cost'):
+                # h_final and output can have negative values, act_output has values in [0,1]
+
                 with tf.name_scope('loss'):
-                    # Entropy measures the "information" or "uncertainty" of a random variable. When you are using base
-                    #  2, it is measured in bits; and there can be more than one bit of information in a variable. if
-                    # x-entropy == 1.15 it means that under the compression the model does on the data, we carry about
-                    # 1.15 bits of information per sample (need 1.5 bits to represent a sample), on average."""
-                    x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
-                    if 'loss' in self.args and self.args.loss == "sum":
-                        self.loss = tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
-                    elif 'loss' in self.args and self.args.loss == "max":
-                        self.loss = tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                    if self.args.entropy:
+                        self.loss = self.entropy_loss(output)
                     else:
-                        self.loss = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                        self.loss = self.hinge_loss()
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -91,6 +86,32 @@ class ModelMultiTagsClassifier(object):
                     self.l2_reg = l2_reg
 
                 self.cost = self.loss + self.l2_reg
+
+    def entropy_loss(self, output):
+        # Entropy measures the "information" or "uncertainty" of a random variable. When you are using base
+        #  2, it is measured in bits; and there can be more than one bit of information in a variable. if
+        # x-entropy == 1.15 it means that under the compression the model does on the data, we carry about
+        # 1.15 bits of information per sample (need 1.5 bits to represent a sample), on average."""
+        x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
+        if 'loss' in self.args and self.args.loss == "sum":
+            return tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+        elif 'loss' in self.args and self.args.loss == "max":
+            return tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+        else:
+            return tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+
+    def hinge_loss(self):
+        raise Exception()
+        min_pos = tf.reduce_min(self.target * self.act_output, 1)
+        max_neg = tf.reduce_max(tf.cast(tf.equal(self.target, 0), tf.float32) * self.act_output, 1)
+        diff = max_neg - min_pos + 1.0
+        # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
+        if 'loss' in self.args and self.args.loss == "sum":
+            return tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+        elif 'loss' in self.args and self.args.loss == "max":
+            return tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+        else:
+            return tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
 
     def eval_batch(self, titles, bodies, sess):
         outputs, predictions = sess.run(
