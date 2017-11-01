@@ -202,6 +202,11 @@ if __name__ == '__main__':
             len(raw_corpus)
         ))
 
+        # eval_batches = create_batches(df, ids_corpus, 'dev', myqrapi.model.args.batch_size, padding_id)
+        # print 'DEV evaluation:'
+        # print '{} batches.'.format(len(eval_batches))
+        # R = myqrapi.evaluate(eval_batches, label_tags, os.path.join(args.out_dir, 'dev') if args.out_dir else None, sess)
+
         eval_batches = create_batches(df, ids_corpus, 'test', myqrapi.model.args.batch_size, padding_id)
         print 'TEST evaluation:'
         print '{} batches.'.format(len(eval_batches))
