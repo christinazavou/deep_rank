@@ -43,17 +43,48 @@ class ModelQR(object):
             # num query
             pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
             # num query * candidate size
-            neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
+            all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
+            # num query
+            neg_scores = tf.reduce_max(all_neg_scores, axis=1)
 
         with tf.name_scope('cost'):
             # h_final can have negative values, pos_scores and neg_scores have values in [0,1]
 
             with tf.name_scope('loss'):
-                if self.args.entropy:
-                    self.loss = self.entropy_loss(neg_scores, pos_scores)
+
+                if self.args.entropy == 0:
+
+                    diff = neg_scores - pos_scores + 1.0
+                    # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
+                    if 'loss' in self.args and self.args.loss == 'max':
+                        self.loss = tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+                    elif 'loss' in self.args and self.args.loss == 'sum':
+                        self.loss = tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+                    else:
+                        self.loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+
+                    """-----------------------------modified version:-------------------------------"""
+                    # diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.0
+                    # if 'loss' in self.args and self.args.loss == 'max':
+                    #     self.loss = tf.reduce_max(tf.reduce_sum(diff, 1), name='hinge_loss')
+                    # elif 'loss' in self.args and self.args.loss == 'sum':
+                    #     self.loss = tf.reduce_sum(tf.reduce_sum(diff, 1), name='hinge_loss')
+                    # else:
+                    #     self.loss = tf.reduce_mean(tf.reduce_sum(diff, 1), name='hinge_loss')
+
                 else:
-                    self.loss = self.modified_hinge_loss(neg_scores, pos_scores)
-                    # self.loss = self.hinge_loss(neg_scores, pos_scores)
+                    raise Exception("dont use entropy")
+                    outputs = tf.concat([tf.reshape(pos_scores, [-1, 1]), all_neg_scores], 1)
+                    targets = tf.concat(
+                        [tf.reshape(tf.ones_like(pos_scores), [-1, 1]), tf.zeros_like(all_neg_scores, tf.float32)], 1)
+                    # outputs lie in (0,1)
+                    x_entropy = targets * (-tf.log(outputs)) + (1.0 - targets) * (-tf.log(1.0 - outputs))
+                    if 'loss' in self.args and self.args.loss == "sum":
+                        self.loss = tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                    elif 'loss' in self.args and self.args.loss == "max":
+                        self.loss = tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                    else:
+                        self.loss = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
 
             with tf.name_scope('regularization'):
                 l2_reg = 0.
@@ -62,53 +93,6 @@ class ModelQR(object):
                 self.l2_reg = l2_reg
 
             self.cost = self.loss + self.l2_reg
-
-    def hinge_loss(self, neg_scores, pos_scores):
-        # num query
-        neg_scores = tf.reduce_max(neg_scores, axis=1)
-
-        diff = neg_scores - pos_scores + 1.0
-
-        # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
-        if 'loss' in self.args and self.args.loss == 'max':
-            loss = tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
-        elif 'loss' in self.args and self.args.loss == 'sum':
-            loss = tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
-        else:
-            loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
-        return loss
-
-    def modified_hinge_loss(self, neg_scores, pos_scores):
-
-        diff = neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.0
-        # diff = tf.cast(neg_scores >= tf.reshape(pos_scores, [-1, 1]), tf.float32) * diff
-
-        if 'loss' in self.args and self.args.loss == 'max':
-            loss = tf.reduce_max(tf.reduce_sum(diff, 1), name='hinge_loss')
-        elif 'loss' in self.args and self.args.loss == 'sum':
-            loss = tf.reduce_sum(tf.reduce_sum(diff, 1), name='hinge_loss')
-        else:
-            loss = tf.reduce_mean(tf.reduce_sum(diff, 1), name='hinge_loss')
-        return loss
-
-    def entropy_loss(self, all_neg_scores, pos_scores):
-        raise Exception()
-        outputs = tf.concat([tf.reshape(pos_scores, [-1, 1]), all_neg_scores], 1)
-        targets = tf.concat(
-            [tf.reshape(tf.ones_like(pos_scores), [-1, 1]), tf.zeros_like(all_neg_scores, tf.float32)], 1)
-
-        self.OUTPUTS = outputs
-        self.TARGETS = targets
-        # outputs lie in (0,1)
-        x_entropy = targets * (-tf.log(outputs)) + (1.0 - targets) * (-tf.log(1.0 - outputs))
-        self.ENTROPY = x_entropy
-
-        if 'loss' in self.args and self.args.loss == "sum":
-            return tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
-        elif 'loss' in self.args and self.args.loss == "max":
-            return tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
-        else:
-            return tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):
@@ -159,8 +143,8 @@ class ModelQR(object):
 
     def evaluate(self, data, sess):
         res = []
-        batch_losses = []
-        hinge_loss = 0.
+        per_batch_losses = []
+        per_query_losses = []
 
         sample = 0
         for idts, idbs, id_labels in data:
@@ -169,15 +153,16 @@ class ModelQR(object):
             # each batch is only one query => max margin loss for one query
             mml = self.max_margin_loss(id_labels, cur_scores)
             if mml is not None:
-                batch_losses.append(mml)
-            if (sample % self.args.batch_size == 0)or (sample == len(data) - 1):
+                per_query_losses.append(mml)
+            if (sample % self.args.batch_size == 0) or (sample == len(data) - 1):
                 if 'loss' in self.args and self.args.loss == "sum":
-                    hinge_loss = (hinge_loss + sum(batch_losses)) / 2.
+                    hinge_loss = sum(per_query_losses)
                 elif 'loss' in self.args and self.args.loss == "max":
-                    hinge_loss = (hinge_loss + max(batch_losses)) / 2.
+                    hinge_loss = max(per_query_losses)
                 else:
-                    hinge_loss = (hinge_loss + (sum(batch_losses) / float(len(batch_losses)))) / 2.
-                batch_losses = []
+                    hinge_loss = sum(per_query_losses) / float(len(per_query_losses))
+                per_batch_losses.append(hinge_loss)
+                per_query_losses = []
 
             assert len(id_labels) == len(cur_scores)
             ranks = (-cur_scores).argsort()
@@ -189,6 +174,8 @@ class ModelQR(object):
         MRR = e.MRR()
         P1 = e.Precision(1)
         P5 = e.Precision(5)
+        # loss averaged per batch to be comparable to train loss that is per batch
+        hinge_loss = sum(per_batch_losses) / float(len(per_batch_losses))
         return MAP, MRR, P1, P5, hinge_loss
 
     def train_batch(self, titles, bodies, pairs, train_op, global_step, sess):
@@ -427,7 +414,6 @@ class ModelQR(object):
         with gzip.open(path) as fin:
             data = pickle.load(fin)
         self.args = data["args"]
-        print '\nLoaded args:\n', self.args, '\n'
         self.ready()
         assign_ops = self.load_trained_vars(path)
         sess.run(tf.global_variables_initializer())
@@ -464,21 +450,6 @@ class LstmQR(ModelQR):
         else:
             self.init_assign_ops = {}
 
-    def _initialize_placeholders_graph(self):
-
-        with tf.name_scope('input'):
-            self.titles_words_ids_placeholder = tf.placeholder(tf.int32, [None, None], name='titles_ids')
-            self.bodies_words_ids_placeholder = tf.placeholder(tf.int32, [None, None], name='bodies_ids')
-            self.pairs_ids_placeholder = tf.placeholder(tf.int32, [None, None], name='bodies_ids')  # LENGTH = 3 OR 22
-
-            self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
-
-            # if self.args.zeros_init:
-            #     self.init_state = tf.placeholder(
-            #         tf.float32, [self.args.depth, 2, None, self.args.hidden_dim], name='init_state')
-            # else:
-            #     self.init_state = None
-
     def _initialize_encoder_graph(self):
 
         self.SLT = self._find_sequence_length(self.titles_words_ids_placeholder)
@@ -514,19 +485,7 @@ class LstmQR(ModelQR):
                 [lstm_cell() for _ in range(self.args.depth)]
             )
 
-        # if self.init_state is not None:
-        #     state_per_layer_list = tf.unstack(self.init_state, axis=0)  # i.e. unstack for each layer
-        #     rnn_tuple_state = tuple(
-        #         [tf.nn.rnn_cell.LSTMStateTuple(state_per_layer_list[idx][0], state_per_layer_list[idx][1])
-        #          # i.e. cell_s, hidden_s
-        #          for idx in range(self.args.depth)]
-        #     )
-
         with tf.name_scope('titles_output'):
-
-            # if self.init_state is not None:
-            #     self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(
-            #         cell, self.titles, initial_state=rnn_tuple_state, sequence_length=self.SLT)
             self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(
                 cell,
                 self.titles,
@@ -550,11 +509,6 @@ class LstmQR(ModelQR):
                 self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
 
         with tf.name_scope('bodies_output'):
-
-            # if self.init_state is not None:
-            #     self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
-            #         cell, self.bodies, initial_state=rnn_tuple_state, sequence_length=self.SLB)
-            # else:
             self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
                 cell,
                 self.bodies,
