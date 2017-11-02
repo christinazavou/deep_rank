@@ -17,7 +17,7 @@ def main():
         n_d=200,
         embs=load_embedding_iterator(args.embeddings),
         only_words=False if args.use_embeddings else True,
-        trainable=True
+        trainable=args.trainable
     )
     print("vocab size={}, corpus size={}\n".format(embedding_layer.n_V, len(raw_corpus)))
     if args.reweight:
