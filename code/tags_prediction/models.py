@@ -76,7 +76,7 @@ class ModelMultiTagsClassifier(object):
                 # h_final and output can have negative values, act_output has values in [0,1]
 
                 with tf.name_scope('loss'):
-                    if self.args.entropy:
+                    if 'entropy' not in self.args or self.args.entropy == 1:
                         self.loss = self.entropy_loss(output)
                     else:
                         self.loss = self.hinge_loss()

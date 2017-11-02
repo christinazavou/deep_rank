@@ -47,7 +47,7 @@ def main():
     model = Model(args, embedding_layer, weights=weights if args.reweight else None)
     model.ready()
 
-    print 'total params: ', model.num_parameters()
+    print 'total (non) trainable params: ', model.num_parameters()
 
     if args.load_pre_trained_part:
         # need to remove the old assigns to embeddings

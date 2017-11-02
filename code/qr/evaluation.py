@@ -19,6 +19,18 @@ class Evaluation(object):
 
         return round(100 * (sum(scores)/len(scores)), 3)
 
+    def Recall(self, recall_at):
+        scores = []
+        for item in self.data:
+            all_relevant_in_item = sum(item)  # considering that we give in the evaluation data all positives+negatives
+            temp = item[:recall_at]
+            relevant = 0.
+            for rank in temp:
+                if rank == 1:
+                    relevant += 1.
+            scores.append(relevant*1.0/all_relevant_in_item)
+        return round(100 * (sum(scores)/len(scores)), 3)
+
     def MAP(self):
         scores = []
 
