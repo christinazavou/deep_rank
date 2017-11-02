@@ -52,7 +52,7 @@ class ModelQR(object):
 
             with tf.name_scope('loss'):
 
-                if self.args.entropy == 0:
+                if 'entropy' not in self.args or self.args.entropy == 0:
 
                     diff = neg_scores - pos_scores + 1.0
                     # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
@@ -372,7 +372,6 @@ class ModelQR(object):
         assert self.args is not None and self.params != {}
         assign_ops = {}
         with gzip.open(path) as fin:
-            graph = tf.get_default_graph()
             data = pickle.load(fin)
             assert self.args.hidden_dim == data["args"].hidden_dim, 'you are trying to load model with {} hid-dim, '\
                 'while your model has {} hid dim'.format(data["args"].hidden_dim, self.args.hidden_dim)

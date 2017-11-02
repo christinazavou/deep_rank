@@ -7,12 +7,14 @@ import pickle
 from tags_prediction import myio as tpio
 from utils import load_embedding_iterator, create_embedding_layer
 import myio
+from datetime import datetime
 
 
 def main():
+    print 'Starting at: {}\n'.format(datetime.now())
     raw_corpus = qaio.read_corpus(args.corpus)
     embedding_layer = create_embedding_layer(
-        n_d=240,
+        n_d=200,
         embs=load_embedding_iterator(args.embeddings),
         only_words=False if args.use_embeddings else True,
         trainable=True
@@ -22,9 +24,6 @@ def main():
         weights = qaio.create_idf_weights(args.corpus, embedding_layer)
 
     label_tags = pickle.load(open(args.tags_file, 'rb'))
-    if isinstance(label_tags, dict):
-        print 'from dict labels to list.'
-        label_tags = label_tags.keys()
     print '\nloaded {} tags'.format(len(label_tags))
 
     raw_corpus_tags = tpio.read_corpus(args.corpus_w_tags, with_tags=True)
@@ -74,6 +73,7 @@ def main():
         model.train_model(
             train_batches, dev=dev if args.dev else None, test=test if args.test else None
         )
+    print '\nEnded at: {}'.format(datetime.now())
 
 
 if __name__ == "__main__":
@@ -89,8 +89,10 @@ if __name__ == "__main__":
     argparser.add_argument("--load_pre_trained_part", type=str, default="")
     argparser.add_argument("--testing", type=int, default=0)
 
-    argparser.add_argument("--use_embeddings", type=int, default=1)
+    argparser.add_argument("--use_embeddings", type=int, default=1)  # refers to word embeddings
     argparser.add_argument("--trainable", type=int, default=1)
+    argparser.add_argument("--load_only_embeddings", type=int, default=0)  # refers to word embeddings
+
     argparser.add_argument("--hidden_dim", "-d", type=int, default=200)
     argparser.add_argument("--cut_off", type=int, default=1)
     argparser.add_argument("--max_seq_len", type=int, default=100)
@@ -110,6 +112,11 @@ if __name__ == "__main__":
     argparser.add_argument("--reweight", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
+
+    argparser.add_argument("--loss_qr", type=str, default="mean")  # sum, max
+    argparser.add_argument("--entropy_qr", type=int, default=0)
+    argparser.add_argument("--loss_tp", type=str, default="mean")  # sum, max
+    argparser.add_argument("--entropy_tp", type=int, default=1)
 
     argparser.add_argument("--threshold", type=float, default=0.5)
     argparser.add_argument("--performance", type=str, default="dev_mrr")  # dev_mrr p_macro, P@5, R@10

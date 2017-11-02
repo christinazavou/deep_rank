@@ -15,7 +15,6 @@ class ModelQRTP(object):
     def ready(self):
         self._initialize_placeholders_graph()
         self._initialize_encoder_graph()
-        self.encoder_trainable_vars = tf.trainable_variables()
         self._initialize_output_graph_qa()
         self._initialize_output_graph_tp()
         for param in tf.trainable_variables():
@@ -41,13 +40,45 @@ class ModelQRTP(object):
             pairs_vecs = tf.nn.embedding_lookup(self.h_final, self.pairs_ids_placeholder, name='pairs_vecs')
             query_vecs = pairs_vecs[:, 0, :]
             pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
-            neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
-            neg_scores = tf.reduce_max(neg_scores, axis=1)
+            all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
+            neg_scores = tf.reduce_max(all_neg_scores, axis=1)
 
         with tf.name_scope('QaLoss'):
-            diff = neg_scores - pos_scores + 1.0
-            loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff)
-            self.loss_qr = loss
+            if 'entropy_qr' not in self.args or self.args.entropy_qr == 0:
+
+                diff = neg_scores - pos_scores + 1.0
+                # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
+                if 'loss_qr' in self.args and self.args.loss_qr == 'max':
+                    self.loss_qr = tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+                elif 'loss_qr' in self.args and self.args.loss_qr == 'sum':
+                    self.loss_qr = tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+                else:
+                    self.loss_qr = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+
+                """-----------------------------modified version:-------------------------------"""
+                # diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.0
+                # if 'loss' in self.args and self.args.loss == 'max':
+                #     self.loss = tf.reduce_max(tf.reduce_sum(diff, 1), name='hinge_loss')
+                # elif 'loss' in self.args and self.args.loss == 'sum':
+                #     self.loss = tf.reduce_sum(tf.reduce_sum(diff, 1), name='hinge_loss')
+                # else:
+                #     self.loss = tf.reduce_mean(tf.reduce_sum(diff, 1), name='hinge_loss')
+
+            else:
+
+                raise Exception("dont use entropy")
+                outputs = tf.concat([tf.reshape(pos_scores, [-1, 1]), all_neg_scores], 1)
+                targets = tf.concat(
+                    [tf.reshape(tf.ones_like(pos_scores), [-1, 1]), tf.zeros_like(all_neg_scores, tf.float32)], 1)
+                # outputs lie in (0,1)
+                x_entropy = targets * (-tf.log(outputs)) + (1.0 - targets) * (-tf.log(1.0 - outputs))
+                if 'loss_qr' in self.args and self.args.loss_qr == "sum":
+                    self.loss_qr = tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                elif 'loss_qr' in self.args and self.args.loss_qr == "max":
+                    self.loss_qr = tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                else:
+                    self.loss_qr = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+
             self.loss_qr *= self.args.qr_mul if 'qr_mul' in self.args else 1.  # version compatibility
 
     def _initialize_output_graph_tp(self):
@@ -72,9 +103,34 @@ class ModelQRTP(object):
             )
 
         with tf.name_scope('TpLoss'):
-            x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
-            self.loss_tp = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+            if 'entropy_tp' not in self.args or self.args.entropy_tp == 1:
+                self.loss_tp = self.entropy_loss(output)
+            else:
+                self.loss_tp = self.hinge_loss()
+
             self.loss_tp *= self.args.tp_mul if 'tp_mul' in self.args else 1.  # version compatibility
+
+    def entropy_loss(self, output):
+        x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
+        if 'loss_tp' in self.args and self.args.loss_tp == "sum":
+            return tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+        elif 'loss_tp' in self.args and self.args.loss_tp == "max":
+            return tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+        else:
+            return tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+
+    def hinge_loss(self):
+        raise Exception()
+        min_pos = tf.reduce_min(self.target * self.act_output, 1)
+        max_neg = tf.reduce_max(tf.cast(tf.equal(self.target, 0), tf.float32) * self.act_output, 1)
+        diff = max_neg - min_pos + 1.0
+        # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
+        if 'loss_tp' in self.args and self.args.loss_tp == "sum":
+            return tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+        elif 'loss_tp' in self.args and self.args.loss_tp == "max":
+            return tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+        else:
+            return tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
 
     def _initialize_cost_function(self):
         with tf.name_scope('cost'):
@@ -134,11 +190,14 @@ class ModelQRTP(object):
 
     def evaluate(self, data, sess):
         res = []
-        qr_loss = 0.
+        per_batch_losses = []
+        per_query_losses = []
 
         outputs, predictions, targets = [], [], []
 
+        sample = 0
         for idts, idbs, id_labels, tags_b in data:
+            sample += 1
             cur_scores, cur_out, cur_pred = self.eval_batch(idts, idbs, sess)
 
             outputs.append(cur_out)
@@ -147,11 +206,22 @@ class ModelQRTP(object):
 
             mml = self.max_margin_loss(id_labels, cur_scores)
             if mml is not None:
-                qr_loss = (qr_loss + mml) / 2.
+                per_query_losses.append(mml)
+            if (sample % self.args.batch_size == 0) or (sample == len(data) - 1):
+                if 'loss_qr' in self.args and self.args.loss_qr == "sum":
+                    hinge_loss = sum(per_query_losses)
+                elif 'loss_qr' in self.args and self.args.loss_qr == "max":
+                    hinge_loss = max(per_query_losses)
+                else:
+                    hinge_loss = sum(per_query_losses) / float(len(per_query_losses))
+                per_batch_losses.append(hinge_loss)
+                per_query_losses = []
+
             assert len(id_labels) == len(cur_scores)
             ranks = (-cur_scores).argsort()
             ranked_labels = id_labels[ranks]
             res.append(ranked_labels)
+        qr_loss = sum(per_batch_losses) / float(len(per_batch_losses))
 
         e = QAEvaluation(res)
         MAP = e.MAP()
@@ -165,7 +235,12 @@ class ModelQRTP(object):
 
         # outputs are passed through sigmoid, thus they lie in (0,1)
         x_entropy = targets * (-np.log(outputs)) + (1.0 - targets) * (-np.log(1.0 - outputs))
-        tp_loss = np.mean(np.sum(x_entropy, 1))
+        if 'loss_tp' in self.args and self.args.loss_tp == "sum":
+            tp_loss = np.sum(np.sum(x_entropy, 1))
+        elif 'loss_tp' in self.args and self.args.loss_tp == "max":
+            tp_loss = np.max(np.sum(x_entropy, 1))
+        else:
+            tp_loss = np.mean(np.sum(x_entropy, 1))
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         # eval_labels = []
@@ -182,9 +257,10 @@ class ModelQRTP(object):
         print '\n{} samples ouf of {} will be evaluated (zero-labeled-samples removed).'.format(len(eval_samples), outputs.shape[0])
         outputs, predictions, targets = outputs[eval_samples, :], predictions[eval_samples, :], targets[eval_samples, :]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
+
         ev = TPEvaluation(outputs, predictions, targets)
         results = [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
-                ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10)]
+                   ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10)]
         return MAP, MRR, P1, P5, qr_loss, tp_loss, tuple(results)
 
     def train_batch(self, batch, train_op, global_step, sess):
@@ -229,8 +305,7 @@ class ModelQRTP(object):
             else:
                 optimizer = tf.train.GradientDescentOptimizer(self.args.learning_rate)
             # todo: two different optimizers, l2_reg, learning_rates
-            grads_and_vars = optimizer.compute_gradients(self.cost)
-            train_op = optimizer.apply_gradients(grads_and_vars, global_step=global_step)
+            train_op = optimizer.minimize(self.cost, global_step=global_step)
 
             sess.run(tf.global_variables_initializer())
             emb = sess.run(self.embeddings)
@@ -491,20 +566,14 @@ class ModelQRTP(object):
             assert self.args.hidden_dim == data["args"].hidden_dim, 'you are trying to load model with {} hid-dim, '\
                 'while your model has {} hid dim'.format(data["args"].hidden_dim, self.args.hidden_dim)
             params_values = data['params_values']
-            graph = tf.get_default_graph()
             for param_name, param_value in params_values.iteritems():
+                if (self.args.load_only_embeddings == 1) and (param_name != self.embeddings.name):
+                    print 'skip {} reason: load only embeddings'.format(param_name)
+                    continue
                 if param_name in self.params:
                     print param_name, ' is in my dict'
-                    try:
-                        variable = graph.get_tensor_by_name(param_name)
-                        assign_op = tf.assign(variable, param_value)
-                        assign_ops[param_name] = assign_op
-                    except:
-                        raise Exception("{} not found in my graph. you are probably loading weights from a model "
-                                        "trained on different amount of outputs-tags. also set use_embeddings to 1".
-                                        format(param_name))
-                        # note: use_embeddings 0 is causing error for unknown reason but anyway here we reset embeddings
-                        # with the loaded ones
+                    variable = self.params[param_name]
+                    assign_ops[param_name] = tf.assign(variable, param_value)
                 else:
                     print param_name, ' is not in my dict'
         return assign_ops
@@ -539,7 +608,7 @@ class ModelQRTP(object):
             sess.run(param_assign_op)
         self.init_assign_ops = {}  # to avoid reassigning embeddings if train
 
-    def num_parameters(self):
+    def num_parameters(self):  # this is not just the trainable params if embeddings are not trainable p.x.
         total_parameters = 0
         for param_name, param in self.params.iteritems():
             # shape is an array of tf.Dimension
@@ -592,9 +661,10 @@ class LstmQRTP(ModelQRTP):
 
             def lstm_cell():
                 _cell = tf.nn.rnn_cell.LSTMCell(
-                    self.args.hidden_dim, state_is_tuple=True, activation=get_activation_by_name(self.args.activation)
+                    self.args.hidden_dim,
+                    state_is_tuple=True,
+                    activation=get_activation_by_name(self.args.activation)
                 )
-                # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
                 return _cell
 
             cell = tf.nn.rnn_cell.MultiRNNCell(
@@ -902,7 +972,6 @@ class CnnQRTP(ModelQRTP):
                 with tf.name_scope("conv-maxpool-%s" % filter_size):
                     filter_shape = [filter_size, self.embedding_layer.n_d, 1, self.args.hidden_dim]
                     print 'assuming num filters = hidden dim. IS IT CORRECT? '
-
 
                     w_vals, b_vals = init_w_b_vals(filter_shape, [self.args.hidden_dim], self.args.activation)
                     W = tf.Variable(w_vals, name="conv-W")

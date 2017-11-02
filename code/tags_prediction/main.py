@@ -87,7 +87,7 @@ if __name__ == '__main__':
     argparser.add_argument("--testing", type=int, default=0)
 
     argparser.add_argument("--use_embeddings", type=int, default=1)
-    argparser.add_argument("--trainable", type=int, default=1)
+    argparser.add_argument("--trainable", type=int, default=1)  # refers to word embeddings
     argparser.add_argument("--trainable_encoder", type=int, default=1)
     argparser.add_argument("--load_only_embeddings", type=int, default=0)  # refers to word embeddings
 
