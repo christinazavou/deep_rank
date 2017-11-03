@@ -19,12 +19,16 @@ def find_bad_queries(results, bad_ids, out_file):
                         u'\n'.encode('utf8'))
                 for q_ranked, q_label in zip(q_ids_candidates, labels):
                     if q_label == 1:
-                        assert q_ranked in q_ids_similar, ' OPA =/'
+                        assert q_ranked in q_ids_similar, 'OPA! q_ranked: {} q_label: {}\nq_id: {}' \
+                                                              '\nq_ids_similar: {}'.format(q_ranked, q_label, q_id,
+                                                                                           q_ids_similar)
                         f.write(u'\t\t{}\n\t\t{}\n\t\t{}\n'.format(
                             q_idx[q_ranked][0].upper(), q_idx[q_ranked][1].upper(), str(q_idx[q_ranked][2]).upper()
                         ).encode('utf8'))
                     else:
-                        assert q_ranked not in q_ids_similar, ' OPA =\\'
+                        assert q_ranked not in q_ids_similar, 'OPA! q_ranked: {} q_label: {}\nq_id: {}' \
+                                                              '\nq_ids_similar: {}'.format(q_ranked, q_label, q_id,
+                                                                                           q_ids_similar)
                         f.write(u'\t\t{}\n\t\t{}\n\t\t{}\n'.format(
                             q_idx[q_ranked][0].lower(), q_idx[q_ranked][1].lower(), str(q_idx[q_ranked][2]).lower()
                         ).encode('utf8'))

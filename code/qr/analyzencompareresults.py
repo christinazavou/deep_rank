@@ -6,6 +6,30 @@ from utils import read_results_rows, read_questions, questions_index
 import matplotlib.pyplot as plt
 
 
+def plot_test_eval(results_list, name, results_list2=None):
+    if name == 'MAP':
+        idx = 5
+    else:
+        raise Exception()
+    values = [r[idx] for r in results_list]
+    if results_list2:
+        values2 = [r[idx] for r in results_list2]
+    # if results_list2:
+    #     plt.plot(values, 'b.', values2, 'g.', alpha=0.5)
+    # else:
+    #     plt.plot(values, '.')
+    # plt.title(name)
+    # plt.show()
+    if results_list2:
+        plt.hist(values, bins=50, alpha=0.5, label='1')
+        plt.hist(values2, bins=50, alpha=0.5, label='2')
+        plt.legend(loc='upper right')
+    else:
+        plt.hist(values, bins=50)
+    plt.title(name)
+    plt.show()
+
+
 argparser = argparse.ArgumentParser(sys.argv[0])
 argparser.add_argument("--corpus", type=str, default="")
 argparser.add_argument("--results1", type=str, default="")
@@ -23,8 +47,10 @@ q_idx = questions_index(Q, True)
 # one result contains:
 # 0:pid, 1:ids_similar, 2:ids_candidates, 3:ranked_scores, 4:ranked_labels, 5:map, 6:mrr, 7:pat1, 8:pat5
 R_1 = list(read_results_rows(args.results1))
+plot_test_eval(R_1, 'MAP', results_list2=None)
 if args.results2:
     R_2 = list(read_results_rows(args.results2))
+    plot_test_eval(R_1, 'MAP', results_list2=R_2)
 
 if args.read_ids:
     ids = pickle.load(open(args.read_ids, 'rb'))
