@@ -102,6 +102,7 @@ class TPAPI:
             ev.Precision(5, True), ev.Precision(10, True), ev.Recall(5, True), ev.Recall(10, True)
         upper_bounds_pat5 = ev.upper_bound(5, True)
         upper_bounds_pat10 = ev.upper_bound(10, True)
+        all_MAP = ev.MeanAveragePrecision(True)
         assert len(all_Pat5) == len(all_rankedat10_tags)
 
         # mat = ev.ConfusionMatrix(5)
@@ -115,9 +116,12 @@ class TPAPI:
         #              [name for t, name in enumerate(tag_names) if t in eval_labels],
         #              'Correlation: True Tag on both axis', folder)
 
-        print 'average all ... ', ev.Precision(5), ev.Precision(10), ev.Recall(5), ev.Recall(10)
+        print 'average: P@5: {} P@10: {} R@5: {} R@10: {} UBP@5: {} UBP@10: {} MAP: {}'.format(
+            ev.Precision(5), ev.Precision(10), ev.Recall(5), ev.Recall(10), ev.upper_bound(5), ev.upper_bound(10),
+            ev.MeanAveragePrecision()
+        )
         return query_ids, all_rankedat10_tags, list(all_Pat5), list(all_Pat10), list(all_Rat5), list(all_Rat10), \
-               upper_bounds_pat5, upper_bounds_pat10
+               upper_bounds_pat5, upper_bounds_pat10, all_MAP
 
 
 def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None):
@@ -202,10 +206,10 @@ if __name__ == '__main__':
             len(raw_corpus)
         ))
 
-        # eval_batches = create_batches(df, ids_corpus, 'dev', myqrapi.model.args.batch_size, padding_id)
-        # print 'DEV evaluation:'
-        # print '{} batches.'.format(len(eval_batches))
-        # R = myqrapi.evaluate(eval_batches, label_tags, os.path.join(args.out_dir, 'dev') if args.out_dir else None, sess)
+        eval_batches = create_batches(df, ids_corpus, 'dev', myqrapi.model.args.batch_size, padding_id)
+        print 'DEV evaluation:'
+        print '{} batches.'.format(len(eval_batches))
+        R = myqrapi.evaluate(eval_batches, label_tags, os.path.join(args.out_dir, 'dev') if args.out_dir else None, sess)
 
         eval_batches = create_batches(df, ids_corpus, 'test', myqrapi.model.args.batch_size, padding_id)
         print 'TEST evaluation:'
@@ -215,8 +219,8 @@ if __name__ == '__main__':
         if args.results_file:
             with open(args.results_file, 'w') as f:
                 for i in range(len(R[0])):
-                    query_id, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10 = \
-                        R[0][i], R[1][i], R[2][i], R[3][i], R[4][i], R[5][i], R[6][i], R[7][i]
+                    query_id, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10, MAP = \
+                        R[0][i], R[1][i], R[2][i], R[3][i], R[4][i], R[5][i], R[6][i], R[7][i], R[8][i]
 
                     real_tags = raw_corpus[str(query_id)][2]
                     real_tags = list(set(real_tags) & set(label_tags))
@@ -224,6 +228,6 @@ if __name__ == '__main__':
 
                     rankedat10_tags = " ".join([str(x) for x in rankedat10_tags])
 
-                    f.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
-                        query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10
+                    f.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
+                        query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10, MAP
                     ))

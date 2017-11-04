@@ -41,7 +41,7 @@ class Evaluation(object):
             return np.round(100*found_per_sample/float(precision_at), 3)
         return round(100 * np.mean(found_per_sample / float(precision_at)), 3)
 
-    def MeanAveragePrecision(self):
+    def MeanAveragePrecision(self, return_all=False):
         cols = np.argsort(self.outputs, 1)[:, ::-1]
         rows = np.repeat(np.array([range(self.targets.shape[0])]).T, repeats=self.targets.shape[1], axis=1)
         data = self.targets[rows, cols]
@@ -57,6 +57,8 @@ class Evaluation(object):
                 scores.append(0.)
             else:
                 scores.append(precision_at_r.sum() / relevant)
+        if return_all:
+            return np.round(100*scores, 3)
         return round(100 * (sum(scores) / len(scores) if len(scores) > 0 else 0.0), 3)
 
     # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.

@@ -40,11 +40,11 @@ def read_df(df_file, chunk_size=None, read_columns=None):
 def evaluate(test_x, test_y, model):
     """"""
     """------------------------------------------remove ill evaluation-------------------------------------------"""
-    eval_labels = []
-    for label in range(test_y.shape[1]):
-        if (test_y[:, label] == np.ones(test_y.shape[0])).any():
-            eval_labels.append(label)
-    print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), test_y.shape[1])
+    # eval_labels = []
+    # for label in range(test_y.shape[1]):
+    #     if (test_y[:, label] == np.ones(test_y.shape[0])).any():
+    #         eval_labels.append(label)
+    # print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), test_y.shape[1])
     eval_samples = []
     for sample in range(test_y.shape[0]):
         if (test_y[sample, :] == np.ones(test_y.shape[1])).any():
@@ -53,27 +53,24 @@ def evaluate(test_x, test_y, model):
     print type(test_y), test_y.shape
     test_x = test_x[eval_samples, :]
     test_y = test_y[eval_samples, :]
-    test_y = test_y[:, eval_labels]
+    # test_y = test_y[:, eval_labels]
     print test_x.shape, test_x.dtype, type(test_x), test_y.shape, test_y.dtype, type(test_y)
     """------------------------------------------remove ill evaluation-------------------------------------------"""
 
     y_scores = model.predict_proba(test_x)  # probability for each class
     predictions = model.predict(test_x)  # 1 or 0 for each class
 
-    """------------------------------------------remove ill evaluation-------------------------------------------"""
-    y_scores = y_scores[:, eval_labels]
-    predictions = predictions[:, eval_labels]
-    """------------------------------------------remove ill evaluation-------------------------------------------"""
+    # """------------------------------------------remove ill evaluation-------------------------------------------"""
+    # y_scores = y_scores[:, eval_labels]
+    # predictions = predictions[:, eval_labels]
+    # """------------------------------------------remove ill evaluation-------------------------------------------"""
 
     ev = Evaluation(y_scores, predictions, test_y)
-    # print 'label ranking average precision score: ', ev.lr_ap_score()
-    # print 'coverage error: ', ev.cov_error()
-    # print 'label ranking loss: ', ev.lr_loss()
-    # print 'MACRO PRECISION RECALL F1: ', ev.precision_recall_fscore(average='macro')
-    # print 'MICRO PRECISION RECALL F1: ', ev.precision_recall_fscore(average='micro')
-    print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(
+    print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\tUBP@5: {}\tUBP@10: {}\tMAP: {}\n'.format(
         ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
-        ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10))
+        ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10), ev.upper_bound(5), ev.upper_bound(10),
+        ev.MeanAveragePrecision()
+    )
 
 
 def get_data(df, type_name, labels):

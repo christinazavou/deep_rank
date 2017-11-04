@@ -4,7 +4,6 @@ import numpy as np
 import pickle
 from utils import read_tp_results_rows, read_questions_with_tags, questions_index_with_tags
 import matplotlib.pyplot as plt
-import matplotlib.pyplot as plt
 
 
 def plot_test_eval(results_list, name, results_list2=None):
@@ -96,6 +95,8 @@ if args.results2:
     plt.figure()
     plt.bar(range(len(differences)), sorted(differences, reverse=True))
     # plt.plot(differences, '.')
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
     plt.ylim([-100, 100])
     if args.fig:
         plt.savefig(args.fig.replace('.png', 'rat10diff.png'))
@@ -108,6 +109,8 @@ if args.results2:
     plt.figure()
     # plt.plot(differences, '.')
     plt.bar(range(len(differences)), sorted(differences, reverse=True))
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
     plt.ylim([-100, 100])
     if args.fig:
         plt.savefig(args.fig.replace('.png', 'rat5diff.png'))

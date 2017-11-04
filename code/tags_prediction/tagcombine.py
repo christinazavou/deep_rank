@@ -102,9 +102,20 @@ class SimComponent(object):
         x_eval = self.tf_idf_trans.transform(x_eval)
         y_scores = []  # per sample
 
-        similarities = cosine_similarity(self.x_train, x_eval).T  # num_of_eval_samples x num_of_train_samples
+        batch_size = x_eval.shape[0]/30
+        top_50_per_sample = np.zeros((x_eval.shape[0], 50))
+        for i in range(20):
+            cos = cosine_similarity(self.x_train, x_eval[i*batch_size: (i+1)*batch_size]).T
+            cos = np.argsort(cos, 1)[:, -50:]
+            top_50_per_sample[(i*batch_size): (i+1)*batch_size, :] = cos
+        top_50_per_sample = top_50_per_sample.astype(np.int32)
+
+        # similarities = cosine_similarity(self.x_train, x_eval).T  # num_of_eval_samples x num_of_train_samples
+        # assert similarities.shape[0] == x_eval.shape[0] and similarities.shape[1] == self.x_train.shape[0]
+
         # argsort gives the less similar first
-        top_50_per_sample = np.argsort(similarities, 1)[:, -50:]  # num_of_eval_samples x 50
+        # top_50_per_sample = np.argsort(similarities, 1)[:, -50:]  # num_of_eval_samples x 50
+        # assert top_50_per_sample.shape == x_eval.shape[0] and top_50_per_sample.shape[1] == 50
 
         for top_50 in top_50_per_sample:
 
@@ -306,7 +317,6 @@ def main():
     x_train = bow_vec.fit_transform(x_train)
     x_dev = bow_vec.transform(x_dev)
     x_test = bow_vec.transform(x_test)
-
     print 'shapes ', x_train.shape, y_train.shape, x_dev.shape, y_dev.shape, x_test.shape, y_test.shape
 
     (alpha, beta, gama), tt, mlr, sim = effective_weights(x_train, y_train, x_dev, y_dev, args.njobs)

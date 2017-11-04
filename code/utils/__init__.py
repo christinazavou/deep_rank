@@ -113,12 +113,12 @@ def read_tp_results_rows(results_file):
     with open(results_file) as f:
         lines = f.readlines()
         for line in lines:
-            query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10 = \
+            query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10, MAP = \
                 line.decode('utf-8').split(u'\t')
             real_tags = real_tags.split(' ')
             rankedat10_tags = rankedat10_tags.split(' ')
             yield int(query_id), real_tags, rankedat10_tags, float(Pat5), float(Pat10), float(Rat5), float(Rat10), \
-                  float(UB5), float(UB10)
+                  float(UB5), float(UB10), float(MAP)
 
 
 def questions_index(questions_list, as_tuple=False):
