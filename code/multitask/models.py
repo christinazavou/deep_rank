@@ -8,6 +8,7 @@ import pickle
 from prettytable import PrettyTable
 from qr.myio import say
 import os
+import myio
 
 
 class ModelQRTP(object):
@@ -36,7 +37,7 @@ class ModelQRTP(object):
 
         with tf.name_scope('scores'):
             self.scores = tf.reduce_sum(tf.multiply(self.h_final[0], self.h_final[1:]), axis=1)
-
+            # triples_len x 22 x hidden_dim
             pairs_vecs = tf.nn.embedding_lookup(self.h_final, self.pairs_ids_placeholder, name='pairs_vecs')
             query_vecs = pairs_vecs[:, 0, :]
             pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
@@ -277,7 +278,7 @@ class ModelQRTP(object):
         )
         return _step, _loss_qr, _loss_tp, _cost
 
-    def train_model(self, train_batches, dev=None, test=None):
+    def train_model(self, ids_corpus_tags, train, dev=None, test=None):
         with tf.Session() as sess:
 
             result_table_qr = PrettyTable(
@@ -398,6 +399,8 @@ class ModelQRTP(object):
                 unchanged += 1
                 if unchanged > 15:
                     break
+
+                train_batches = myio.create_batches(ids_corpus_tags, train, self.args.batch_size, self.padding_id)
 
                 N = len(train_batches)
 

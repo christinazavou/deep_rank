@@ -68,7 +68,8 @@ def main():
             ))
 
         model.train_model(
-            train_batches,
+            ids_corpus,
+            train,
             dev=dev if args.dev else None,
             test=test if args.test else None
         )

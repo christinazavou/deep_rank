@@ -71,7 +71,7 @@ def main():
         print '\nmodel init_assign_ops: {}\n'.format(model.init_assign_ops)
 
         model.train_model(
-            train_batches, dev=dev if args.dev else None, test=test if args.test else None
+            ids_corpus_tags, train, dev=dev if args.dev else None, test=test if args.test else None
         )
     print '\nEnded at: {}'.format(datetime.now())
 

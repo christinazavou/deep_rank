@@ -190,7 +190,7 @@ class ModelQR(object):
         )
         return _step, _loss, _cost
 
-    def train_model(self, train_batches, dev=None, test=None):
+    def train_model(self, ids_corpus, train, dev=None, test=None):
         with tf.Session() as sess:
 
             result_table = PrettyTable(
@@ -273,6 +273,10 @@ class ModelQR(object):
                 unchanged += 1
                 if unchanged > 15:
                     break
+
+                train_batches = myio.create_batches(
+                    ids_corpus, train, self.args.batch_size, self.padding_id, pad_left=False
+                )
 
                 N = len(train_batches)
 

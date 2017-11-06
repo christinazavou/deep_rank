@@ -164,7 +164,10 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, pad_left
         triples += [[pid, x]+neg for x in pos]
         # print 'add to triples: \n', [[pid, x]+neg for x in pos]
 
+        # print cnt, len(pos), len(triples)
+
         if cnt == batch_size or u == N-1:
+            # print cnt == batch_size, cnt, len(triples)
             titles, bodies = create_one_batch(titles, bodies, padding_id, pad_left)
             # titles.shape = [max_title_len x batch_size], bodies.shape = [max_body_len x batch_size]
 
