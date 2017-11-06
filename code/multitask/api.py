@@ -50,11 +50,8 @@ class QRTPAPI:
                 self.model.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.model.dropout_prob: 0.,
             }
-            if 'init_state' in self.model.__dict__:
-                print 'init_state is in'
-                feed_dict[self.model.init_state] = np.zeros((self.model.args.depth, 2, titles.T.shape[0], self.model.args.hidden_dim))
             _scores, _outputs, _predictions = cur_sess.run(
-                [self.model.scores, self.model.output, self.model.prediction], feed_dict
+                [self.model.scores, self.model.act_output, self.model.prediction], feed_dict
             )
             return _scores, _outputs, _predictions
         self.score_func = score_func
@@ -79,17 +76,12 @@ class QRTPAPI:
             res.append(ranked_labels)
 
         e = QAEvaluation(res)
-        MAP = round(e.MAP(), 4)
-        MRR = round(e.MRR(), 4)
-        P1 = round(e.Precision(1), 4)
-        P5 = round(e.Precision(5), 4)
-        print 'MAP MRR P@1 P@5: ', MAP, MRR, P1, P5
+        print '\nMAP: {} MRR: {} P@1: {} P@5: {}\n'.format(e.MAP(), e.MRR(), e.Precision(1), e.Precision(5))
 
         outputs = np.vstack(outputs)
         predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
-        ev = TPEvaluation(outputs, predictions, targets)
         # results = [round(ev.lr_ap_score(), 4), round(ev.lr_loss(), 4), round(ev.cov_error(), 4)]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         # eval_labels = []
@@ -108,9 +100,10 @@ class QRTPAPI:
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         ev = TPEvaluation(outputs, predictions, targets)
 
-        print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\n'.format(ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10))
-        print 'R@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10))
-
+        print '\naverage: P@5: {} P@10: {} R@5: {} R@10: {} UBP@5: {} UBP@10: {} MAP: {}\n'.format(
+            ev.Precision(5), ev.Precision(10), ev.Recall(5), ev.Recall(10), ev.upper_bound(5), ev.upper_bound(10),
+            ev.MeanAveragePrecision()
+        )
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
@@ -127,9 +120,6 @@ if __name__ == '__main__':
     print '\n', args, '\n'
 
     label_tags = pickle.load(open(args.tags_file, 'rb'))
-    if isinstance(label_tags, dict):
-        print 'from dict labels to list.'
-        label_tags = label_tags.keys()
     print '\nloaded {} tags'.format(len(label_tags))
 
     with tf.Session() as sess:

@@ -182,9 +182,10 @@ def evaluate(test_y, y_scores, verbose=0):
     ev = Evaluation(y_scores, None, test_y)
 
     if verbose:
-        print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\n'.format(
+        print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\tUBP@5: {}\tUBP@10: {}\tMAP: {}\n'.format(
             ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
-            ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10)
+            ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10), ev.upper_bound(5), ev.upper_bound(10),
+            ev.MeanAveragePrecision()
         )
     return ev.Recall(10)
 
@@ -281,14 +282,17 @@ def effective_weights(x_train, y_train, x_dev, y_dev, njobs=3):   # , sample_siz
     tt_probs = tt.predict_proba(x_dev)
     # evaluate(y_dev, tt_probs)
 
-    start_time = time.time()
-    combo_results = find_texts_parallel(mlr_probs, sim_probs, tt_probs, y_dev, workers=njobs)
+    if args.cross_val:
+        start_time = time.time()
+        combo_results = find_texts_parallel(mlr_probs, sim_probs, tt_probs, y_dev, workers=njobs)
 
-    print 'took {} minutes for all combinations '.format((time.time()-start_time) // 60)
-    sorted_results = sorted(combo_results.items(), key=lambda x: x[1])[::-1]
-    print '\n', sorted_results, '\n'
-    print 'best combo: {}'.format(sorted_results[0])
-    return sorted_results[0][0], tt, mlr, sim
+        print 'took {} minutes for all combinations '.format((time.time()-start_time) // 60)
+        sorted_results = sorted(combo_results.items(), key=lambda x: x[1])[::-1]
+        print '\n', sorted_results, '\n'
+        print 'best combo: {}'.format(sorted_results[0])
+        return sorted_results[0][0], tt, mlr, sim
+
+    return (0.1, 1.0, 0), tt, mlr, sim
 
 
 def main():
