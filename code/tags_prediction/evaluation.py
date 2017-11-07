@@ -58,7 +58,7 @@ class Evaluation(object):
             else:
                 scores.append(precision_at_r.sum() / relevant)
         if return_all:
-            return np.round(100*scores, 3)
+            return np.round(100*np.array(scores), 3)
         return round(100 * (sum(scores) / len(scores) if len(scores) > 0 else 0.0), 3)
 
     # ASSUMING OUTPUTS ARE RANKED AND A LIST UP TO K IS RETRIEVED.

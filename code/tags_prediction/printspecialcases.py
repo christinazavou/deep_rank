@@ -10,7 +10,7 @@ import utils
 def find_bad_queries(results, bad_ids, out_file):
     with open(out_file, 'w') as f:
         f.write('Cases where not all true tags where retrieved up to rank 10.\n\n')
-        for query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10 in results:
+        for query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10, MAP in results:
             if query_id in bad_ids:
                 # print real tags based on selected tags only
                 f.write(
@@ -23,7 +23,7 @@ def find_bad_queries(results, bad_ids, out_file):
 def find_best_queries(results, best_ids, out_file):
     with open(out_file, 'w') as f:
         f.write('Cases where all positive cases were found up to rank 5.\n\n')
-        for query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10 in results:
+        for query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10, MAP in results:
             if query_id in best_ids:
                 # print real tags based on selected tags only
                 f.write(

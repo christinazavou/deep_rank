@@ -15,14 +15,12 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.metrics.pairwise import cosine_similarity
 
 from evaluation import Evaluation
-import scipy.sparse
 from sklearn.utils import shuffle
-
+import myio
 import logging
 from Queue import Full
 from multiprocessing import Queue, Pool
 import itertools
-import random
 from multiprocessing import freeze_support
 
 logging.basicConfig(level=logging.INFO)
@@ -46,12 +44,16 @@ def read_df(df_file, chunk_size=None, read_columns=None):
         raise Exception(' unknown pandas file {}'.format(df_file))
 
 
-def get_data(df, labels, type_name=None):
+def get_data(df, labels, type_name=None, with_ids=False):
     if type_name is not None:
         df = df[df['type'] == type_name]
     if args.truncate:
+        if with_ids:
+            return df['id'].values, (df['title'] + u' ' + df['body_truncated']).values, df[labels].values
         return (df['title'] + u' ' + df['body_truncated']).values, df[labels].values
     else:
+        if with_ids:
+            return df['id'].values, (df['title'] + u' ' + df['body']).values, df[labels].values
         return (df['title'] + u' ' + df['body']).values, df[labels].values
 
 
@@ -167,17 +169,17 @@ class TagTermComponent(object):
 
 def evaluate(test_y, y_scores, verbose=0):
     """------------------------------------------remove ill evaluation-------------------------------------------"""
-    eval_labels = []
-    for label in range(test_y.shape[1]):
-        if (test_y[:, label] == np.ones(test_y.shape[0])).any():
-            eval_labels.append(label)
+    # eval_labels = []
+    # for label in range(test_y.shape[1]):
+    #     if (test_y[:, label] == np.ones(test_y.shape[0])).any():
+    #         eval_labels.append(label)
     eval_samples = []
     for sample in range(test_y.shape[0]):
         if (test_y[sample, :] == np.ones(test_y.shape[1])).any():
             eval_samples.append(sample)
 
     test_y, y_scores = test_y[eval_samples, :], y_scores[eval_samples, :]
-    test_y, y_scores = test_y[:, eval_labels], y_scores[:, eval_labels]
+    # test_y, y_scores = test_y[:, eval_labels], y_scores[:, eval_labels]
 
     ev = Evaluation(y_scores, None, test_y)
 
@@ -295,6 +297,58 @@ def effective_weights(x_train, y_train, x_dev, y_dev, njobs=3):   # , sample_siz
     return (0.1, 1.0, 0), tt, mlr, sim
 
 
+def api(label_tags, test_y, y_scores, all_ids):
+
+    eval_samples = []
+    for sample in range(test_y.shape[0]):
+        if (test_y[sample, :] == np.ones(test_y.shape[1])).any():
+            eval_samples.append(sample)
+
+    test_y, y_scores = test_y[eval_samples, :], y_scores[eval_samples, :]
+
+    ev = Evaluation(y_scores, None, test_y)
+
+    all_rankedat10_tags = []
+    query_ids = []
+
+    for sample_id, sample_output in zip(eval_samples, y_scores):
+        q_id = all_ids[sample_id]
+        query_ids.append(q_id)
+        cols = np.argsort(sample_output)[-10:]
+        rankedat10_tags = []
+        for col in cols[::-1]:
+            label_name = label_tags[col]
+            rankedat10_tags.append(label_name)
+        all_rankedat10_tags.append(rankedat10_tags)
+
+    all_Pat5, all_Pat10, all_Rat5, all_Rat10 = \
+        ev.Precision(5, True), ev.Precision(10, True), ev.Recall(5, True), ev.Recall(10, True)
+    upper_bounds_pat5 = ev.upper_bound(5, True)
+    upper_bounds_pat10 = ev.upper_bound(10, True)
+    all_MAP = ev.MeanAveragePrecision(True)
+    assert len(all_Pat5) == len(all_rankedat10_tags)
+
+    R = (query_ids, all_rankedat10_tags, list(all_Pat5), list(all_Pat10), list(all_Rat5), list(all_Rat10),
+         upper_bounds_pat5, upper_bounds_pat10, all_MAP)
+
+    raw_corpus = myio.read_corpus(args.corpus_w_tags, with_tags=True)
+
+    with open(args.results_file, 'w') as f:
+        for i in range(len(R[0])):
+            query_id, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10, MAP = \
+                R[0][i], R[1][i], R[2][i], R[3][i], R[4][i], R[5][i], R[6][i], R[7][i], R[8][i]
+
+            real_tags = raw_corpus[str(query_id)][2]
+            real_tags = list(set(real_tags) & set(label_tags))
+            real_tags = " ".join([str(x) for x in real_tags])
+
+            rankedat10_tags = " ".join([str(x) for x in rankedat10_tags])
+
+            f.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
+                query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10, MAP
+            ))
+
+
 def main():
 
     df = read_df(args.df_path)
@@ -305,7 +359,7 @@ def main():
     if not args.cross_val:
         x_train, y_train = get_data(df, label_tags, 'train')
         x_dev, y_dev = get_data(df, label_tags, 'dev')
-        x_test, y_test = get_data(df, label_tags, 'test')
+        x_ids, x_test, y_test = get_data(df, label_tags, 'test', with_ids=True)
     else:
         x, y = get_data(df, label_tags)
         x, y = shuffle(x, y)
@@ -339,6 +393,8 @@ def main():
     print 'test evaluation: '
     evaluate(y_test, probs, 1)
 
+    if args.results_file:
+        api(label_tags, y_test, probs, x_ids)
 
 if __name__ == '__main__':
     freeze_support()
@@ -348,7 +404,8 @@ if __name__ == '__main__':
     argparser.add_argument("--tags_file", type=str, default="")
     argparser.add_argument("--model_file_mlr", type=str, default="")
     argparser.add_argument("--model_file_tt", type=str, default="")
-
+    argparser.add_argument("--results_file", type=str, default="")
+    argparser.add_argument("--corpus_w_tags", type=str, default="")
     argparser.add_argument("--truncate", type=int, default=1)
     argparser.add_argument("--njobs", type=int, default=3)
     argparser.add_argument("--cross_val", type=int, default=0)
