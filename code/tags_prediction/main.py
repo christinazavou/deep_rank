@@ -86,7 +86,8 @@ if __name__ == '__main__':
     argparser.add_argument("--load_pre_trained_part", type=str, default="")
     argparser.add_argument("--testing", type=int, default=0)
 
-    argparser.add_argument("--use_embeddings", type=int, default=1)
+    argparser.add_argument("--use_embeddings", type=int, default=1)  # whether to initialize embeddings values with the
+    # given embeddings values
     argparser.add_argument("--trainable", type=int, default=1)  # refers to word embeddings
     argparser.add_argument("--trainable_encoder", type=int, default=1)
     argparser.add_argument("--load_only_embeddings", type=int, default=0)  # refers to word embeddings
@@ -116,6 +117,8 @@ if __name__ == '__main__':
     argparser.add_argument("--performance", type=str, default="R@10")  # P@5, R@10
     argparser.add_argument("--loss", type=str, default="mean")  # sum, max
     argparser.add_argument("--entropy", type=int, default=1)
+    argparser.add_argument("--weight", type=float, default=1.0)
+    argparser.add_argument("--ignore_examples", type=float, default=0.0)
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

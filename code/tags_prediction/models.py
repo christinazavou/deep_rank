@@ -94,13 +94,20 @@ class ModelMultiTagsClassifier(object):
         #  2, it is measured in bits; and there can be more than one bit of information in a variable. if
         # x-entropy == 1.15 it means that under the compression the model does on the data, we carry about
         # 1.15 bits of information per sample (need 1.5 bits to represent a sample), on average."""
-        x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
+        # x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
+        w = 1. if 'weight' not in self.args else self.args.weight
+        weighted_entropy = self.target*(-tf.log(self.act_output))*w + (1.0-self.target)*(-tf.log(1.0-self.act_output))
+        weighted_entropy *= self.considered_examples()
+
         if 'loss' in self.args and self.args.loss == "sum":
-            return tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+            return tf.reduce_sum(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
         elif 'loss' in self.args and self.args.loss == "max":
-            return tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+            return tf.reduce_max(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
         else:
-            return tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+            return tf.reduce_mean(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
+
+    def considered_examples(self):
+        return tf.expand_dims(tf.cast(tf.not_equal(tf.reduce_sum(self.target, 1), 0), tf.float32), 1)
 
     def hinge_loss(self):
         raise Exception()

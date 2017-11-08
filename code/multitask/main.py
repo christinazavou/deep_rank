@@ -124,6 +124,7 @@ if __name__ == "__main__":
     argparser.add_argument("--tp_weight", type=float, default=1.)
     argparser.add_argument("--qr_mul", type=float, default=1.)  # 1 or 0.5 or 0.05
     argparser.add_argument("--tp_mul", type=float, default=1.)  # 1 or 2 or 20
+    argparser.add_argument("--weight", type=float, default=1.)  # to weight positive targets of tp
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

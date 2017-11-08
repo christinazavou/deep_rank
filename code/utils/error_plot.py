@@ -1,6 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+params = {'legend.fontsize': 'x-large',
+          'axes.labelsize': 'x-large',
+          'axes.titlesize': 'x-large',
+          'xtick.labelsize': 'x-large',
+          'ytick.labelsize': 'x-large'}
+plt.rcParams.update(params)
+
+
 COLORS = ['r', 'g', 'b', 'y', 'k']
 MARKERS = ['o', 's', '+', '*', '^']
 
@@ -103,18 +111,18 @@ error_plot_all_metrics(mean_values_, std_values_, x_ticks_, labels_, title_)
 
 """-------------------------------------------------QR-----------------------------------------------------------"""
 mean_values_ = [
-    [57.54,	72.20,	57.80,	44.11],  # CNN
-    [57.80, 70.59,  55.51,  43.98],  # LSTM
-    [59.79,	73.06,	59.46,	44.99],  # GRU
-    [58.40,	72.14,	58.33,	43.01],  # BiLSTM
-    [60.59,	73.35,	59.68,	45.35],  # BiGRU
+    [56.63,	71.13,	56.99,	43.60],  # CNN
+    [57.85,	70.19,	55.38,	44.49],  # LSTM
+    [59.80,	72.58,	59.41,	45.48],  # GRU
+    [],  # BiLSTM
+    [],  # BiGRU
 ]
 std_values_ = [
-    [0.23,	0.79,	1.54,	0.35],  # CNN
-    [0.45,  0.53,   1.39,   0.42],  # LSTM
-    [0.94,	0.67,	1.21,	0.79],  # GRU
-    [0.99,	1.71,	2.88,	1.00],  # BiLSTM
-    [1.08,	0.86,	1.82,	0.73],  # BiGRU
+    [0.57,	0.18,	0.38,	0.51],  # CNN
+    [0.47,	0.99,	1.20,	0.41],  # LSTM
+    [0.57,	0.99,	2.54,	0.49],  # GRU
+    [],  # BiLSTM
+    [],  # BiGRU
 ]
 x_ticks_ = ['MAP', 'MRR', 'P@1', 'P@10']
 labels_ = ['CNN', 'LSTM', 'GRU', 'BiLSTM', 'BiGRU']

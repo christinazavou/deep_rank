@@ -59,7 +59,6 @@ else:
     # based on whether P@1 was not found (only care if similar candidate was given) !!
     # bad_queries = [r[0] for r in R_1 if 1 in r[4] and r[7] < 100]
     bad_queries = [r[0] for r in R_1 if r[5] <= 56 or (1 in r[4] and r[7] < 100)]
-    # todo or low MAP
     print '\nbad_queries: {}\n'.format(bad_queries)
 
     # best queries are defined based on the results of model 1 (or given from a file)

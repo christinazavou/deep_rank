@@ -5,6 +5,13 @@ import pickle
 from utils import read_tp_results_rows, read_questions_with_tags, questions_index_with_tags
 import matplotlib.pyplot as plt
 
+params = {'legend.fontsize': 'x-large',
+          'axes.labelsize': 'x-large',
+          'axes.titlesize': 'x-large',
+          'xtick.labelsize': 'x-large',
+          'ytick.labelsize': 'x-large'}
+plt.rcParams.update(params)
+
 
 def plot_test_eval(results_list, name, results_list2=None):
     if name == 'P@5':
@@ -88,16 +95,14 @@ else:
 print ids
 
 if args.results2:
-    # find R@5 (R@10) values of best (bad) queries specified above for both model 1 and 2
-    RAT5_model1 = [r[5] for r in R_1 if r[0] in ids['best_queries']]
-    RAT5_model2 = [r[5] for r in R_2 if r[0] in ids['best_queries']]
+    MAPbest_model1 = [r[9] for r in R_1 if r[0] in ids['best_queries']]
+    MAPbest_model2 = [r[9] for r in R_2 if r[0] in ids['best_queries']]
 
-    RAT10_model1 = [r[6] for r in R_1 if r[0] in ids['bad_queries']]
-    RAT10_model2 = [r[6] for r in R_2 if r[0] in ids['bad_queries']]
-
+    MAPbad_model1 = [r[9] for r in R_1 if r[0] in ids['bad_queries']]
+    MAPbad_model2 = [r[9] for r in R_2 if r[0] in ids['bad_queries']]
     # plot differences (one positive difference means model 1 wins in one query)
 
-    differences = np.array(RAT10_model1) - np.array(RAT10_model1)
+    differences = np.array(MAPbest_model1) - np.array(MAPbest_model2)
     # print differences
     print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
     plt.figure()
@@ -105,14 +110,51 @@ if args.results2:
     # plt.plot(differences, '.')
     frame = plt.gca()
     frame.axes.get_xaxis().set_visible(False)
-    plt.title('R@10 {} - {}'.format(args.name1, args.name2))
+    plt.title('MAP {} - {}'.format(args.name1, args.name2))
     plt.ylim([-100, 100])
     if args.fig:
         plt.savefig(args.fig.replace('.png', 'rat10diff.png'))
     else:
         plt.show()
 
-    differences = np.array(RAT5_model1) - np.array(RAT5_model2)
+    differences = np.array(MAPbad_model1) - np.array(MAPbad_model2)
+    # print differences
+    print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
+    plt.figure()
+    # plt.plot(differences, '.')
+    plt.bar(range(len(differences)), sorted(differences, reverse=True))
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
+    plt.title('MAP {} - {}'.format(args.name1, args.name2))
+    plt.ylim([-100, 100])
+    if args.fig:
+        plt.savefig(args.fig.replace('.png', 'rat5diff.png'))
+    else:
+        plt.show()
+
+    Rat5best_model1 = [r[6] for r in R_1 if r[0] in ids['best_queries']]
+    Rat5best_model2 = [r[6] for r in R_2 if r[0] in ids['best_queries']]
+
+    Rat5bad_model1 = [r[6] for r in R_1 if r[0] in ids['bad_queries']]
+    Rat5bad_model2 = [r[6] for r in R_2 if r[0] in ids['bad_queries']]
+    # plot differences (one positive difference means model 1 wins in one query)
+
+    differences = np.array(Rat5best_model1) - np.array(Rat5best_model2)
+    # print differences
+    print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
+    plt.figure()
+    plt.bar(range(len(differences)), sorted(differences, reverse=True))
+    # plt.plot(differences, '.')
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
+    plt.title('R@5 {} - {}'.format(args.name1, args.name2))
+    plt.ylim([-100, 100])
+    if args.fig:
+        plt.savefig(args.fig.replace('.png', 'rat10diff.png'))
+    else:
+        plt.show()
+
+    differences = np.array(Rat5bad_model1) - np.array(Rat5bad_model2)
     # print differences
     print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
     plt.figure()
@@ -126,3 +168,4 @@ if args.results2:
         plt.savefig(args.fig.replace('.png', 'rat5diff.png'))
     else:
         plt.show()
+

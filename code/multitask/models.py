@@ -112,13 +112,21 @@ class ModelQRTP(object):
             self.loss_tp *= self.args.tp_mul if 'tp_mul' in self.args else 1.  # version compatibility
 
     def entropy_loss(self, output):
-        x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
+        # x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
+
+        # tuplex_entropies = tf.nn.embedding_lookup(x_entropy, self.pairs_ids_placeholder, name='tuplex_entropies')
+        # tuplex_entropies = tf.reduce_sum(tuplex_entropies, 2)
+        # self.loss_entropy = tf.reduce_mean(tf.reduce_sum(tuplex_entropies, 1), name='tuplex_entropy')
+
+        w = 1. if 'weight' not in self.args else self.args.weight
+        weighted_entropy = self.target*(-tf.log(self.act_output))*w + (1.0-self.target)*(-tf.log(1.0-self.act_output))
+
         if 'loss_tp' in self.args and self.args.loss_tp == "sum":
-            return tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+            return tf.reduce_sum(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
         elif 'loss_tp' in self.args and self.args.loss_tp == "max":
-            return tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+            return tf.reduce_max(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
         else:
-            return tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+            return tf.reduce_mean(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
 
     def hinge_loss(self):
         raise Exception()
@@ -189,6 +197,7 @@ class ModelQRTP(object):
         )
         return scores, outputs, predictions
 
+    # todo: if binaryxentropy/hingeloss add...
     def evaluate(self, data, sess):
         res = []
         per_batch_losses = []
