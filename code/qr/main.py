@@ -60,6 +60,7 @@ def main():
         train_batches = myio.create_batches(
             ids_corpus, train, args.batch_size, padding_id, pad_left=False
         )
+
         print("{} to create batches\n".format(time.time()-start_time))
         print("{} batches, {} tokens in total, {} triples in total\n".format(
                 len(train_batches),
@@ -97,6 +98,7 @@ if __name__ == "__main__":
     # average 2 = max pooling for RNNs
     argparser.add_argument("--average", type=int, default=0)
     argparser.add_argument("--batch_size", type=int, default=40)
+    argparser.add_argument("--performance", type=str, default='MRR')  # 'MRR' or 'MAP'
     # argparser.add_argument("--learning", type=str, default="adam")
     argparser.add_argument("--learning_rate", type=float, default=0.001)
     argparser.add_argument("--l2_reg", type=float, default=1e-5)
@@ -104,6 +106,7 @@ if __name__ == "__main__":
     argparser.add_argument("--depth", type=int, default=1)
     argparser.add_argument("--dropout", type=float, default=0.0)
     argparser.add_argument("--max_epoch", type=int, default=50)
+    argparser.add_argument("--patience", type=int, default=8)
     argparser.add_argument("--normalize", type=int, default=1)
     argparser.add_argument("--reweight", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")

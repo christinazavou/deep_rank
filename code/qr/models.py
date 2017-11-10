@@ -29,6 +29,8 @@ class ModelQR(object):
 
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
 
+            self.query_per_pair = tf.placeholder(tf.int32, [None, None], name='query_per_pair')
+
     def _initialize_output_graph(self):
 
         with tf.name_scope('scores'):
@@ -36,15 +38,17 @@ class ModelQR(object):
             #   first one in batch is query, the rest are candidate questions
             self.scores = tf.reduce_sum(tf.multiply(self.h_final[0], self.h_final[1:]), axis=1)
 
+            # scores in [-1, 1]
+
             # For training:
             pairs_vecs = tf.nn.embedding_lookup(self.h_final, self.pairs_ids_placeholder, name='pairs_vecs')
-            # num query * n_d
+            # [num query, n_d]
             query_vecs = pairs_vecs[:, 0, :]
-            # num query
+            # [num query]
             pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
-            # num query * candidate size
+            # [num query, candidate size - 1]
             all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
-            # num query
+            # [num query]
             neg_scores = tf.reduce_max(all_neg_scores, axis=1)
 
         with tf.name_scope('cost'):
@@ -54,23 +58,38 @@ class ModelQR(object):
 
                 if 'entropy' not in self.args or self.args.entropy == 0:
 
-                    diff = neg_scores - pos_scores + 1.0
-                    # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
-                    if 'loss' in self.args and self.args.loss == 'max':
-                        self.loss = tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
-                    elif 'loss' in self.args and self.args.loss == 'sum':
-                        self.loss = tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
-                    else:
-                        self.loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+                    def loss0():
+                        diff = neg_scores - pos_scores + 1.0
+                        # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
+                        loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
+                        return loss
 
-                    """-----------------------------modified version:-------------------------------"""
-                    # diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.0
-                    # if 'loss' in self.args and self.args.loss == 'max':
-                    #     self.loss = tf.reduce_max(tf.reduce_sum(diff, 1), name='hinge_loss')
-                    # elif 'loss' in self.args and self.args.loss == 'sum':
-                    #     self.loss = tf.reduce_sum(tf.reduce_sum(diff, 1), name='hinge_loss')
-                    # else:
-                    #     self.loss = tf.reduce_mean(tf.reduce_sum(diff, 1), name='hinge_loss')
+                    def loss1(query_per_pair):
+                        # [num_query, 20]
+                        diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.
+                        diff = tf.nn.relu(diff)
+                        # [num_query+1, 20]
+                        diff = tf.concat([tf.zeros((1, 20)), diff], 0)
+                        newqpp = query_per_pair + 1
+                        # [batch_size, 10, 20]
+                        emb_loss = tf.nn.embedding_lookup(diff, newqpp)
+                        # [batch_size, 10]
+                        emb_loss_max = tf.reduce_max(emb_loss, 2)
+                        # [batch_size]
+                        loss_pq = tf.reduce_max(emb_loss_max, 1)
+                        loss = tf.reduce_mean(loss_pq)
+                        return loss
+
+                    def loss2():
+                        # [num_query, candidate size - 1]
+                        diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.0
+                        diff = tf.nn.relu(diff)
+                        loss = tf.reduce_mean(diff, name='hinge_loss')
+                        return loss
+
+                    self.loss = loss0()  # OK
+                    # self.loss = loss1(self.query_per_pair)  # OK
+                    # self.loss = loss2()  # OK
 
                 else:
                     raise Exception("dont use entropy")
@@ -115,20 +134,50 @@ class ModelQR(object):
             dict_norms[param_name] = round(l2, 3)
         return dict_norms
 
-    @staticmethod
-    def max_margin_loss(labels, scores):
-        pos_scores = [score for label, score in zip(labels, scores) if label == 1]
-        neg_scores = [score for label, score in zip(labels, scores) if label == 0]
-        if len(pos_scores) == 0 or len(neg_scores) == 0:
-            return None
-        pos_score = min(pos_scores)
-        neg_score = max(neg_scores)
-        diff = neg_score - pos_score + 1.0
-        if diff > 0:
-            loss = diff
-        else:
-            loss = 0
-        return loss
+    def loss0(self, labels, scores):  # OK
+        tuples_diff = []
+        for query_labels, query_scores in zip(labels, scores):
+            pos_scores = [score for label, score in zip(query_labels, query_scores) if label == 1]
+            neg_scores = [score for label, score in zip(query_labels, query_scores) if label == 0]
+            if len(pos_scores) == 0 or len(neg_scores) == 0:
+                continue
+            pos_scores = np.array(pos_scores)
+            neg_scores = np.repeat(np.array(neg_scores).reshape([1, -1]), pos_scores.shape[0], 0)
+            neg_scores = np.max(neg_scores, 1)
+            diff = neg_scores - pos_scores + 1.
+            tuples_diff.append(diff.reshape([-1, 1]))
+        tuples_diff = np.vstack(tuples_diff)
+        tuples_diff = (tuples_diff > 0).astype(np.float32)*tuples_diff
+        return np.mean(tuples_diff)
+
+    def loss1(self, labels, scores):  # OK
+        query_losses = []
+        for query_labels, query_scores in zip(labels, scores):
+            pos_scores = [score for label, score in zip(query_labels, query_scores) if label == 1]
+            neg_scores = [score for label, score in zip(query_labels, query_scores) if label == 0]
+            if len(pos_scores) == 0 or len(neg_scores) == 0:
+                continue
+            pos_scores = np.array(pos_scores)
+            neg_scores = np.repeat(np.array(neg_scores).reshape([1, -1]), pos_scores.shape[0], 0)
+            neg_scores = np.max(neg_scores, 1)
+            diff = neg_scores - pos_scores + 1.
+            diff = (diff > 0).astype(np.float32)*diff
+            query_losses.append(np.max(diff))
+        return np.mean(np.array(query_losses))
+
+    def loss2(self, labels, scores):  # OK
+        query_losses = []
+        for query_labels, query_scores in zip(labels, scores):
+            pos_scores = [score for label, score in zip(query_labels, query_scores) if label == 1]
+            neg_scores = [score for label, score in zip(query_labels, query_scores) if label == 0]
+            if len(pos_scores) == 0 or len(neg_scores) == 0:
+                continue
+            pos_scores = np.array(pos_scores).reshape([-1, 1])
+            neg_scores = np.repeat(np.array(neg_scores).reshape([1, -1]), pos_scores.shape[0], 0)
+            diff = neg_scores - pos_scores + 1.
+            diff = (diff > 0).astype(np.float32)*diff
+            query_losses.append(np.mean(diff))
+        return np.mean(np.array(query_losses))
 
     def eval_batch(self, titles, bodies, sess):
         _scores = sess.run(
@@ -143,28 +192,17 @@ class ModelQR(object):
 
     def evaluate(self, data, sess):
         res = []
-        per_batch_losses = []
-        per_query_losses = []
+        all_labels = []
+        all_scores = []
 
         sample = 0
         for idts, idbs, id_labels in data:
             sample += 1
             cur_scores = self.eval_batch(idts, idbs, sess)
-            # each batch is only one query => max margin loss for one query
-            mml = self.max_margin_loss(id_labels, cur_scores)
-            if mml is not None:
-                per_query_losses.append(mml)
-            if (sample % self.args.batch_size == 0) or (sample == len(data) - 1):
-                if 'loss' in self.args and self.args.loss == "sum":
-                    hinge_loss = sum(per_query_losses)
-                elif 'loss' in self.args and self.args.loss == "max":
-                    hinge_loss = max(per_query_losses)
-                else:
-                    hinge_loss = sum(per_query_losses) / float(len(per_query_losses))
-                per_batch_losses.append(hinge_loss)
-                per_query_losses = []
+            assert len(id_labels) == len(cur_scores)  # equal to 20
 
-            assert len(id_labels) == len(cur_scores)
+            all_labels.append(id_labels)
+            all_scores.append(cur_scores)
             ranks = (-cur_scores).argsort()
             ranked_labels = id_labels[ranks]
             res.append(ranked_labels)
@@ -174,11 +212,15 @@ class ModelQR(object):
         MRR = e.MRR()
         P1 = e.Precision(1)
         P5 = e.Precision(5)
-        # loss averaged per batch to be comparable to train loss that is per batch
-        hinge_loss = sum(per_batch_losses) / float(len(per_batch_losses))
-        return MAP, MRR, P1, P5, hinge_loss
+        # hinge_loss = self.loss0(all_labels, all_scores)
+        loss0 = self.loss0(all_labels, all_scores)
+        loss1 = self.loss1(all_labels, all_scores)
+        loss2 = self.loss2(all_labels, all_scores)
+        return MAP, MRR, P1, P5, loss0, loss1, loss2
 
-    def train_batch(self, titles, bodies, pairs, train_op, global_step, sess):
+    def train_batch(self, titles, bodies, pairs, query_per_pair, train_op, global_step, sess):
+        # _, _step, _loss, _cost = sess.run(
+        #     [train_op, global_step, self.loss, self.cost],
         _, _step, _loss, _cost = sess.run(
             [train_op, global_step, self.loss, self.cost],
             feed_dict={
@@ -186,6 +228,7 @@ class ModelQR(object):
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.pairs_ids_placeholder: pairs,
                 self.dropout_prob: np.float32(self.args.dropout),
+                self.query_per_pair: query_per_pair
             }
         )
         return _step, _loss, _cost
@@ -194,7 +237,7 @@ class ModelQR(object):
         with tf.Session() as sess:
 
             result_table = PrettyTable(
-                ["Epoch", "dev MAP", "dev MRR", "dev P@1", "dev P@5", "tst MAP", "tst MRR", "tst P@1", "tst P@5"]
+                ["Epoch", "Step", "dev MAP", "dev MRR", "dev P@1", "dev P@5", "tst MAP", "tst MRR", "tst P@1", "tst P@5"]
             )
             dev_MAP = dev_MRR = dev_P1 = dev_P5 = 0
             test_MAP = test_MRR = test_P1 = test_P5 = 0
@@ -238,8 +281,14 @@ class ModelQR(object):
             p_norm_summary_writer = tf.summary.FileWriter(p_norm_summary_dir,)
 
             # DEV LOSS & EVAL
-            dev_loss_writer = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "dev", "loss"),
+            dev_loss0_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "loss0"),
+            )
+            dev_loss1_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "loss1"),
+            )
+            dev_loss2_writer = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "loss2"),
             )
             dev_eval_writer1 = tf.summary.FileWriter(
                 os.path.join(self.args.save_dir, "summaries", "dev", "MAP"),
@@ -267,11 +316,12 @@ class ModelQR(object):
                 if not os.path.exists(checkpoint_dir):
                     os.makedirs(checkpoint_dir)
 
+            patience = 8 if 'patience' not in self.args else self.args.patience
             unchanged = 0
             max_epoch = self.args.max_epoch
             for epoch in xrange(max_epoch):
                 unchanged += 1
-                if unchanged > 15:
+                if unchanged > patience:
                     break
 
                 train_batches = myio.create_batches(
@@ -284,9 +334,9 @@ class ModelQR(object):
                 train_cost = 0.0
 
                 for i in xrange(N):
-                    idts, idbs, idps = train_batches[i]
+                    idts, idbs, idps, qpp = train_batches[i]
                     cur_step, cur_loss, cur_cost = self.train_batch(
-                        idts, idbs, idps, train_op, global_step, sess
+                        idts, idbs, idps, qpp, train_op, global_step, sess
                     )
                     summary = sess.run(loss_summary, {loss: cur_loss})
                     train_loss_writer.add_summary(summary, cur_step)
@@ -301,13 +351,19 @@ class ModelQR(object):
                     if i % 10 == 0:
                         say("\r{}/{}".format(i, N))
 
-                    if i == N-1:  # EVAL
+                    if i % 100 == 0:  # EVAL
                         if dev:
-                            dev_MAP, dev_MRR, dev_P1, dev_P5, dev_hinge_loss = self.evaluate(dev, sess)
+                            dev_MAP, dev_MRR, dev_P1, dev_P5, dloss0, dloss1, dloss2 = self.evaluate(dev, sess)
 
-                            summary = sess.run(loss_summary, {loss: dev_hinge_loss})
-                            dev_loss_writer.add_summary(summary, cur_step)
-                            dev_loss_writer.flush()
+                            summary = sess.run(loss_summary, {loss: dloss0})
+                            dev_loss0_writer.add_summary(summary, cur_step)
+                            dev_loss0_writer.flush()
+                            summary = sess.run(loss_summary, {loss: dloss1})
+                            dev_loss1_writer.add_summary(summary, cur_step)
+                            dev_loss1_writer.flush()
+                            summary = sess.run(loss_summary, {loss: dloss2})
+                            dev_loss2_writer.add_summary(summary, cur_step)
+                            dev_loss2_writer.flush()
 
                             summary = sess.run(dev_summary, {dev_eval: dev_MAP})
                             dev_eval_writer1.add_summary(summary, cur_step)
@@ -329,23 +385,31 @@ class ModelQR(object):
                             p_norm_summary_writer.add_summary(_p_norm_sum, cur_step)
 
                         if test:
-                            test_MAP, test_MRR, test_P1, test_P5, test_hinge_loss = self.evaluate(test, sess)
+                            test_MAP, test_MRR, test_P1, test_P5, tloss0, tloss1, tloss2 = self.evaluate(test, sess)
 
-                        if dev_MRR > best_dev:
+                        if self.args.performance == "MRR" and dev_MRR > best_dev:
                             unchanged = 0
                             best_dev = dev_MRR
                             result_table.add_row(
-                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
+                                [epoch, cur_step, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
+                            )
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "MAP" and dev_MAP > best_dev:
+                            unchanged = 0
+                            best_dev = dev_MAP
+                            result_table.add_row(
+                                [epoch, cur_step, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
-                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tMRR={:.2f},{:.2f}\n".format(
+                        say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tMRR={:.2f},MAP={:.2f}\n".format(
                             epoch,
                             train_cost / (i+1),  # i.e. divided by N training batches
                             train_loss / (i+1),  # i.e. divided by N training batches
                             dev_MRR,
-                            best_dev
+                            dev_MAP
                         ))
                         say("\n{}\n".format(result_table))
                         myio.say("\tp_norm: {}\n".format(
@@ -354,7 +418,7 @@ class ModelQR(object):
 
     def save(self, sess, path, step):
         # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again
-        path = "{}_{}".format(path, ".pkl.gz")
+        path = "{}_{}_{}".format(path, step, ".pkl.gz")
         print("Saving model checkpoint to {}\n".format(path))
         params_values = {}
         for param_name, param in self.params.iteritems():

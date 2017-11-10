@@ -144,6 +144,8 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, pad_left
     triples = []
     batches = []
 
+    query_per_triple = []
+
     for u in xrange(N):
         i = perm[u]
         pid, qids, qlabels = data[i]
@@ -161,7 +163,12 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, pad_left
         pid = pid2id[pid]
         pos = [pid2id[q] for q, l in zip(qids, qlabels) if l == 1 and q in pid2id]
         neg = [pid2id[q] for q, l in zip(qids, qlabels) if l == 0 and q in pid2id]
+
+        query_per_triple.append(
+            range(len(triples), len(triples)+len(pos))+[-1 for x in range(len(pos), 10)])  # because prune_pos_cnt = 10
+
         triples += [[pid, x]+neg for x in pos]
+
         # print 'add to triples: \n', [[pid, x]+neg for x in pos]
 
         # print cnt, len(pos), len(triples)
@@ -172,15 +179,17 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, pad_left
             # titles.shape = [max_title_len x batch_size], bodies.shape = [max_body_len x batch_size]
 
             triples = create_hinge_batch(triples)
-            # shape ?????? what padding ?????
+            query_per_triple = np.array(query_per_triple, np.int32)
 
-            batches.append((titles, bodies, triples))
+            batches.append((titles, bodies, triples, query_per_triple))
 
             titles = []
             bodies = []
             triples = []
             pid2id = {}
             cnt = 0
+
+            query_per_triple = []
 
     return batches
 

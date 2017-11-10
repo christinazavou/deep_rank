@@ -6,6 +6,14 @@ from utils import read_results_rows, read_questions, questions_index
 import matplotlib.pyplot as plt
 
 
+params = {'legend.fontsize': 'x-large',
+          'axes.labelsize': 'x-large',
+          'axes.titlesize': 'x-large',
+          'xtick.labelsize': 'x-large',
+          'ytick.labelsize': 'x-large'}
+plt.rcParams.update(params)
+
+
 def plot_test_eval(results_list, name, results_list2=None):
     if name == 'MAP':
         idx = 5
@@ -36,6 +44,8 @@ argparser.add_argument("--results1", type=str, default="")
 argparser.add_argument("--results2", type=str, default="")
 argparser.add_argument("--save_ids", type=str, default="")
 argparser.add_argument("--read_ids", type=str, default="")
+argparser.add_argument("--name1", type=str, default="")
+argparser.add_argument("--name2", type=str, default="")
 argparser.add_argument("--fig", type=str, default="")
 args = argparser.parse_args()
 
@@ -74,9 +84,6 @@ if args.results2:
     PAT1_model1 = [r[7] for r in R_1 if r[0] in ids['bad_queries']]
     PAT1_model2 = [r[7] for r in R_2 if r[0] in ids['bad_queries']]
 
-    PAT5_model1 = [r[8] for r in R_1 if r[0] in ids['best_queries']]
-    PAT5_model2 = [r[8] for r in R_2 if r[0] in ids['best_queries']]
-
     # plot differences (one positive difference means model 1 wins in one query)
 
     differences = np.array(PAT1_model1) - np.array(PAT1_model2) + 1
@@ -88,10 +95,14 @@ if args.results2:
     frame = plt.gca()
     frame.axes.get_xaxis().set_visible(False)
     plt.ylim([-100, 100])
+    plt.title('P@1 {}-{}'.format(args.name1, args.name2))
     if not args.fig:
         plt.show()
     else:
         plt.savefig(args.fig.replace('.png', 'pat1diff.png'))
+
+    PAT5_model1 = [r[8] for r in R_1 if r[0] in ids['best_queries']]
+    PAT5_model2 = [r[8] for r in R_2 if r[0] in ids['best_queries']]
 
     differences = np.array(PAT5_model1) - np.array(PAT5_model2) + 1
     # print differences
@@ -101,6 +112,43 @@ if args.results2:
     # plt.plot(range(len(differences)), sorted(differences, reverse=True), 'o')
     frame = plt.gca()
     frame.axes.get_xaxis().set_visible(False)
+    plt.title('P@5 {}-{}'.format(args.name1, args.name2))
+    plt.ylim([-100, 100])
+    if not args.fig:
+        plt.show()
+    else:
+        plt.savefig(args.fig.replace('.png', 'pat5diff.png'))
+
+    MAP_model1 = [r[5] for r in R_1 if r[0] in ids['best_queries']]
+    MAP_model2 = [r[5] for r in R_2 if r[0] in ids['best_queries']]
+
+    differences = np.array(MAP_model1) - np.array(MAP_model2) + 1
+    # print differences
+    print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
+    plt.figure()
+    plt.bar(range(len(differences)), sorted(differences, reverse=True))
+    # plt.plot(range(len(differences)), sorted(differences, reverse=True), 'o')
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
+    plt.title('MAP {}-{}'.format(args.name1, args.name2))
+    plt.ylim([-100, 100])
+    if not args.fig:
+        plt.show()
+    else:
+        plt.savefig(args.fig.replace('.png', 'mapdiff.png'))
+
+    MAP_model1 = [r[5] for r in R_1 if r[0] in ids['bad_queries']]
+    MAP_model2 = [r[5] for r in R_2 if r[0] in ids['bad_queries']]
+
+    differences = np.array(MAP_model1) - np.array(MAP_model2) + 1
+    # print differences
+    print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
+    plt.figure()
+    plt.bar(range(len(differences)), sorted(differences, reverse=True))
+    # plt.plot(range(len(differences)), sorted(differences, reverse=True), 'o')
+    frame = plt.gca()
+    frame.axes.get_xaxis().set_visible(False)
+    plt.title('MAP {}-{}'.format(args.name1, args.name2))
     plt.ylim([-100, 100])
     if not args.fig:
         plt.show()
