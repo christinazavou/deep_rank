@@ -8,6 +8,8 @@ from prettytable import PrettyTable
 from myio import say
 import myio
 import os
+from losses import loss0, loss1, loss2, loss0sum, loss2sum
+from losses import devloss0, devloss1, devloss2, devloss0sum, devloss2sum
 
 
 class ModelQR(object):
@@ -42,14 +44,12 @@ class ModelQR(object):
 
             # For training:
             pairs_vecs = tf.nn.embedding_lookup(self.h_final, self.pairs_ids_placeholder, name='pairs_vecs')
-            # [num query, n_d]
+            # [num_of_tuples, n_d]
             query_vecs = pairs_vecs[:, 0, :]
-            # [num query]
+            # [num_of_tuples]
             pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
-            # [num query, candidate size - 1]
+            # [num_of_tuples, candidate size - 1]
             all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
-            # [num query]
-            neg_scores = tf.reduce_max(all_neg_scores, axis=1)
 
         with tf.name_scope('cost'):
             # h_final can have negative values, pos_scores and neg_scores have values in [0,1]
@@ -57,40 +57,16 @@ class ModelQR(object):
             with tf.name_scope('loss'):
 
                 if 'entropy' not in self.args or self.args.entropy == 0:
-
-                    def loss0():
-                        diff = neg_scores - pos_scores + 1.0
-                        # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
-                        loss = tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
-                        return loss
-
-                    def loss1(query_per_pair):
-                        # [num_query, 20]
-                        diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.
-                        diff = tf.nn.relu(diff)
-                        # [num_query+1, 20]
-                        diff = tf.concat([tf.zeros((1, 20)), diff], 0)
-                        newqpp = query_per_pair + 1
-                        # [batch_size, 10, 20]
-                        emb_loss = tf.nn.embedding_lookup(diff, newqpp)
-                        # [batch_size, 10]
-                        emb_loss_max = tf.reduce_max(emb_loss, 2)
-                        # [batch_size]
-                        loss_pq = tf.reduce_max(emb_loss_max, 1)
-                        loss = tf.reduce_mean(loss_pq)
-                        return loss
-
-                    def loss2():
-                        # [num_query, candidate size - 1]
-                        diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.0
-                        diff = tf.nn.relu(diff)
-                        loss = tf.reduce_mean(diff, name='hinge_loss')
-                        return loss
-
-                    self.loss = loss0()  # OK
-                    # self.loss = loss1(self.query_per_pair)  # OK
-                    # self.loss = loss2()  # OK
-
+                    if 'loss' in self.args and self.args.loss == 'loss1':
+                        self.loss = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # OK
+                    elif 'loss' in self.args and self.args.loss == 'loss2':
+                        self.loss = loss2(pos_scores, all_neg_scores)  # OK
+                    elif 'loss' in self.args and self.args.loss == 'loss2sum':
+                        self.loss = loss2sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
+                    elif 'loss' in self.args and self.args.loss == 'loss0sum':
+                        self.loss = loss0sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
+                    else:
+                        self.loss = loss0(pos_scores, all_neg_scores)  # OK
                 else:
                     raise Exception("dont use entropy")
                     outputs = tf.concat([tf.reshape(pos_scores, [-1, 1]), all_neg_scores], 1)
@@ -134,51 +110,6 @@ class ModelQR(object):
             dict_norms[param_name] = round(l2, 3)
         return dict_norms
 
-    def loss0(self, labels, scores):  # OK
-        tuples_diff = []
-        for query_labels, query_scores in zip(labels, scores):
-            pos_scores = [score for label, score in zip(query_labels, query_scores) if label == 1]
-            neg_scores = [score for label, score in zip(query_labels, query_scores) if label == 0]
-            if len(pos_scores) == 0 or len(neg_scores) == 0:
-                continue
-            pos_scores = np.array(pos_scores)
-            neg_scores = np.repeat(np.array(neg_scores).reshape([1, -1]), pos_scores.shape[0], 0)
-            neg_scores = np.max(neg_scores, 1)
-            diff = neg_scores - pos_scores + 1.
-            tuples_diff.append(diff.reshape([-1, 1]))
-        tuples_diff = np.vstack(tuples_diff)
-        tuples_diff = (tuples_diff > 0).astype(np.float32)*tuples_diff
-        return np.mean(tuples_diff)
-
-    def loss1(self, labels, scores):  # OK
-        query_losses = []
-        for query_labels, query_scores in zip(labels, scores):
-            pos_scores = [score for label, score in zip(query_labels, query_scores) if label == 1]
-            neg_scores = [score for label, score in zip(query_labels, query_scores) if label == 0]
-            if len(pos_scores) == 0 or len(neg_scores) == 0:
-                continue
-            pos_scores = np.array(pos_scores)
-            neg_scores = np.repeat(np.array(neg_scores).reshape([1, -1]), pos_scores.shape[0], 0)
-            neg_scores = np.max(neg_scores, 1)
-            diff = neg_scores - pos_scores + 1.
-            diff = (diff > 0).astype(np.float32)*diff
-            query_losses.append(np.max(diff))
-        return np.mean(np.array(query_losses))
-
-    def loss2(self, labels, scores):  # OK
-        query_losses = []
-        for query_labels, query_scores in zip(labels, scores):
-            pos_scores = [score for label, score in zip(query_labels, query_scores) if label == 1]
-            neg_scores = [score for label, score in zip(query_labels, query_scores) if label == 0]
-            if len(pos_scores) == 0 or len(neg_scores) == 0:
-                continue
-            pos_scores = np.array(pos_scores).reshape([-1, 1])
-            neg_scores = np.repeat(np.array(neg_scores).reshape([1, -1]), pos_scores.shape[0], 0)
-            diff = neg_scores - pos_scores + 1.
-            diff = (diff > 0).astype(np.float32)*diff
-            query_losses.append(np.mean(diff))
-        return np.mean(np.array(query_losses))
-
     def eval_batch(self, titles, bodies, sess):
         _scores = sess.run(
             self.scores,
@@ -213,9 +144,13 @@ class ModelQR(object):
         P1 = e.Precision(1)
         P5 = e.Precision(5)
         # hinge_loss = self.loss0(all_labels, all_scores)
-        loss0 = self.loss0(all_labels, all_scores)
-        loss1 = self.loss1(all_labels, all_scores)
-        loss2 = self.loss2(all_labels, all_scores)
+        loss1 = devloss1(all_labels, all_scores)
+        if 'loss' in self.args and 'sum' in self.args.loss:
+            loss0 = devloss0sum(all_labels, all_scores)
+            loss2 = devloss2sum(all_labels, all_scores)
+        else:
+            loss0 = devloss0(all_labels, all_scores)
+            loss2 = devloss2(all_labels, all_scores)
         return MAP, MRR, P1, P5, loss0, loss1, loss2
 
     def train_batch(self, titles, bodies, pairs, query_per_pair, train_op, global_step, sess):
