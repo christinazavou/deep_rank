@@ -111,7 +111,7 @@ if __name__ == "__main__":
     argparser.add_argument("--reweight", type=int, default=1)
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
-    argparser.add_argument("--loss", type=str, default="mean")
+    argparser.add_argument("--loss", type=str, default="loss0")
     argparser.add_argument("--entropy", type=int, default=0)
 
     timestamp = str(int(time.time()))

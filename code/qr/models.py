@@ -69,17 +69,6 @@ class ModelQR(object):
                         self.loss = loss0(pos_scores, all_neg_scores)  # OK
                 else:
                     raise Exception("dont use entropy")
-                    outputs = tf.concat([tf.reshape(pos_scores, [-1, 1]), all_neg_scores], 1)
-                    targets = tf.concat(
-                        [tf.reshape(tf.ones_like(pos_scores), [-1, 1]), tf.zeros_like(all_neg_scores, tf.float32)], 1)
-                    # outputs lie in (0,1)
-                    x_entropy = targets * (-tf.log(outputs)) + (1.0 - targets) * (-tf.log(1.0 - outputs))
-                    if 'loss' in self.args and self.args.loss == "sum":
-                        self.loss = tf.reduce_sum(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
-                    elif 'loss' in self.args and self.args.loss == "max":
-                        self.loss = tf.reduce_max(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
-                    else:
-                        self.loss = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
 
             with tf.name_scope('regularization'):
                 l2_reg = 0.
