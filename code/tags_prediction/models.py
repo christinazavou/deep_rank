@@ -7,6 +7,7 @@ from prettytable import PrettyTable
 import myio
 from nn import get_activation_by_name, init_w_b_vals
 from evaluation import Evaluation
+from losses import entropy_loss, hinge_loss, dev_entropy_loss
 
 
 class ModelMultiTagsClassifier(object):
@@ -55,31 +56,44 @@ class ModelMultiTagsClassifier(object):
 
         with tf.name_scope('outputs'):
 
-            with tf.name_scope("MLP"):
+            if self.args.mlp_dim != 0:
+                scope_name = 'MLP'
+            else:
+                scope_name = 'SLP'
 
-                w_vals, b_vals = init_w_b_vals(
-                    [self.args.hidden_dim, self.output_dim], [self.output_dim], self.args.activation
-                )
+            with tf.name_scope(scope_name):
 
-                self.w_o = tf.Variable(w_vals, name='weights_out')
-                self.b_o = tf.Variable(b_vals, name='bias_out')
+                if self.args.mlp_dim != 0:
+                    w_h1, b_h1 = init_w_b_vals(
+                        [self.args.hidden_dim, self.args.mlp_dim], [self.args.mlp_dim], self.args.activation)
+                    weights_h1, biases_h1 = tf.Variable(w_h1, name='weights_h1'), tf.Variable(b_h1, name='bias_h1')
+                    layer_1 = tf.add(tf.matmul(self.h_final, weights_h1), biases_h1)
 
-            output = tf.matmul(self.h_final, self.w_o) + self.b_o
-            self.act_output = tf.nn.sigmoid(output)
+                    w_o, b_o = init_w_b_vals([self.args.mlp_dim, self.output_dim], [self.output_dim], self.args.activation)
+                    weights_o, biases_o = tf.Variable(w_o, name='weights_o'), tf.Variable(b_o, name='bias_o')
 
-            # for evaluation
-            self.prediction = tf.where(
-                self.act_output > self.args.threshold, tf.ones_like(self.act_output), tf.zeros_like(self.act_output)
-            )
+                    output = tf.matmul(layer_1, weights_o) + biases_o
+
+                else:
+                    w_o, b_o = init_w_b_vals([self.args.hidden_dim, self.output_dim], [self.output_dim], self.args.activation)
+                    weights_o, biases_o = tf.Variable(w_o, name='weights_o'), tf.Variable(b_o, name='bias_o')
+
+                    output = tf.matmul(self.h_final, weights_o) + biases_o
+
+                self.act_output = tf.nn.sigmoid(output)
+
+            # self.prediction = tf.where(
+            #     self.act_output > self.args.threshold, tf.ones_like(self.act_output), tf.zeros_like(self.act_output)
+            # )
 
             with tf.name_scope('cost'):
                 # h_final and output can have negative values, act_output has values in [0,1]
 
                 with tf.name_scope('loss'):
                     if 'entropy' not in self.args or self.args.entropy == 1:
-                        self.loss = self.entropy_loss(output)
+                        self.loss = entropy_loss(self.args, self.target, self.act_output)
                     else:
-                        self.loss = self.hinge_loss()
+                        self.loss = hinge_loss()
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -89,91 +103,41 @@ class ModelMultiTagsClassifier(object):
 
                 self.cost = self.loss + self.l2_reg
 
-    def entropy_loss(self, output):
-        # Entropy measures the "information" or "uncertainty" of a random variable. When you are using base
-        #  2, it is measured in bits; and there can be more than one bit of information in a variable. if
-        # x-entropy == 1.15 it means that under the compression the model does on the data, we carry about
-        # 1.15 bits of information per sample (need 1.5 bits to represent a sample), on average."""
-        # x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(labels=self.target, logits=output)
-        w = 1. if 'weight' not in self.args else self.args.weight
-        weighted_entropy = self.target*(-tf.log(self.act_output))*w + (1.0-self.target)*(-tf.log(1.0-self.act_output))
-        weighted_entropy *= self.considered_examples()
-
-        if 'loss' in self.args and self.args.loss == "sum":
-            return tf.reduce_sum(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
-        elif 'loss' in self.args and self.args.loss == "max":
-            return tf.reduce_max(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
-        else:
-            return tf.reduce_mean(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
-
-    def considered_examples(self):
-        return tf.expand_dims(tf.cast(tf.not_equal(tf.reduce_sum(self.target, 1), 0), tf.float32), 1)
-
-    def hinge_loss(self):
-        raise Exception()
-        min_pos = tf.reduce_min(self.target * self.act_output, 1)
-        max_neg = tf.reduce_max(tf.cast(tf.equal(self.target, 0), tf.float32) * self.act_output, 1)
-        diff = max_neg - min_pos + 1.0
-        # tf.cast((diff > 0), tf.float32) * diff is replacing in matrix diff the values <= 0 with zero
-        if 'loss' in self.args and self.args.loss == "sum":
-            return tf.reduce_sum(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
-        elif 'loss' in self.args and self.args.loss == "max":
-            return tf.reduce_max(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
-        else:
-            return tf.reduce_mean(tf.cast((diff > 0), tf.float32) * diff, name='hinge_loss')
-
     def eval_batch(self, titles, bodies, sess):
-        outputs, predictions = sess.run(
-            [self.act_output, self.prediction],
+        outputs = sess.run(
+            self.act_output,
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.dropout_prob: 0.,
             }
         )
-        return outputs, predictions
+        return outputs
 
     def evaluate(self, eval_batches, sess):
 
-        outputs, predictions, targets = [], [], []
+        outputs, targets = [], []
         for titles_b, bodies_b, tags_b in eval_batches:
-            out, pred = self.eval_batch(titles_b, bodies_b, sess)
+            out = self.eval_batch(titles_b, bodies_b, sess)
             outputs.append(out)
-            predictions.append(pred)
             targets.append(tags_b)
 
         outputs = np.vstack(outputs)
-        predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
-        # outputs are passed through sigmoid, thus they lie in (0,1)
-        x_entropy = targets * (-np.log(outputs)) + (1.0 - targets) * (-np.log(1.0 - outputs))
-        if 'loss' in self.args and self.args.loss == "sum":
-            loss = np.sum(np.sum(x_entropy, 1))
-        elif 'loss' in self.args and self.args.loss == "max":
-            loss = np.max(np.sum(x_entropy, 1))
-        else:
-            loss = np.mean(np.sum(x_entropy, 1))
+        loss = dev_entropy_loss(self.args, targets, outputs)
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
-        # eval_labels = []
-        # for label in range(targets.shape[1]):
-        #     if (targets[:, label] == np.ones(targets.shape[0])).any():
-        #         eval_labels.append(label)
-        # print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
-        # outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
-
         eval_samples = []
         for sample in range(targets.shape[0]):
             if (targets[sample, :] == np.ones(targets.shape[1])).any():
                 eval_samples.append(sample)
         print '\n{} samples ouf of {} will be evaluated (zero-labeled-samples removed).'.format(len(eval_samples), outputs.shape[0])
-        outputs, predictions, targets = outputs[eval_samples, :], predictions[eval_samples, :], targets[eval_samples, :]
+        outputs, targets = outputs[eval_samples, :], targets[eval_samples, :]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
 
-        ev = Evaluation(outputs, predictions, targets)
-        results = [ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
-                   ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10)]
+        ev = Evaluation(outputs, None, targets)
+        results = [ev.Precision(5), ev.Precision(10), ev.Recall(5), ev.Recall(10), ev.MeanAveragePrecision()]
         return loss, tuple(results)
 
     def train_batch(self, titles, bodies, y_batch, train_op, global_step, sess):
@@ -192,12 +156,12 @@ class ModelMultiTagsClassifier(object):
         with tf.Session() as sess:
 
             result_table = PrettyTable(
-                ["Epoch", "dev P@1", "dev P@3", "dev P@5", "dev P@10", "dev R@1", "dev R@3", "dev R@5", "dev R@10",
-                 "tst P@1", "tst P@3", "tst P@5", "tst P@10", "tst R@1", "tst R@3", "tst R@5", "tst R@10"]
+                ["Epoch", "Step", "dev P@5", "dev P@10", "dev R@5", "dev R@10", "dev MAP",
+                 "tst P@5", "tst P@10", "tst R@5", "tst R@10", "tst MAP"]
             )
 
-            dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10 = 0, 0, 0, 0, 0, 0, 0, 0
-            test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10 = 0, 0, 0, 0, 0, 0, 0, 0
+            dev_PAT5, dev_PAT10, dev_RAT5, dev_RAT10, dev_MAP = 0, 0, 0, 0, 0
+            test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_MAP = 0, 0, 0, 0, 0
 
             best_dev_performance = -1
 
@@ -270,6 +234,9 @@ class ModelMultiTagsClassifier(object):
             dev_eval_writer4 = tf.summary.FileWriter(
                 os.path.join(self.args.save_dir, "summaries", "dev", "Pat10"),
             )
+            dev_eval_writer5 = tf.summary.FileWriter(
+                os.path.join(self.args.save_dir, "summaries", "dev", "MAP"),
+            )
 
             loss = tf.placeholder(tf.float32)
             loss_summary = tf.summary.scalar("loss", loss)
@@ -284,11 +251,12 @@ class ModelMultiTagsClassifier(object):
                 if not os.path.exists(checkpoint_dir):
                     os.makedirs(checkpoint_dir)
 
+            patience = 5 if 'patience' not in self.args else self.args.patience
             unchanged = 0
             max_epoch = self.args.max_epoch
             for epoch in xrange(max_epoch):
                 unchanged += 1
-                if unchanged > 15:
+                if unchanged > patience:
                     break
 
                 N = len(train_batches)
@@ -321,13 +289,11 @@ class ModelMultiTagsClassifier(object):
                     if i % 10 == 0:
                         myio.say("\r{}/{}".format(i, N))
 
-                    if i == N-1 or (i % 10 == 0 and self.args.testing):  # EVAL
+                    if i % 300 == 0:  # EVAL
                         dev_loss = 0
 
                         if dev:
-                            dev_loss, (
-                                dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10
-                            ) = self.evaluate(dev, sess)
+                            dev_loss, (dev_PAT5, dev_PAT10, dev_RAT5, dev_RAT10, dev_MAP) = self.evaluate(dev, sess)
 
                             summary = sess.run(loss_summary, {loss: dev_loss})
                             dev_loss_writer.add_summary(summary, cur_step)
@@ -345,6 +311,9 @@ class ModelMultiTagsClassifier(object):
                             summary = sess.run(dev_summary, {dev_eval: dev_PAT10})
                             dev_eval_writer4.add_summary(summary, cur_step)
                             dev_eval_writer4.flush()
+                            summary = sess.run(dev_summary, {dev_eval: dev_MAP})
+                            dev_eval_writer5.add_summary(summary, cur_step)
+                            dev_eval_writer5.flush()
 
                             feed_dict = {}
                             for param_name, param_norm in self.get_pnorm_stat(sess).iteritems():
@@ -353,16 +322,14 @@ class ModelMultiTagsClassifier(object):
                             p_norm_summary_writer.add_summary(_p_norm_sum, cur_step)
 
                         if test:
-                            test_loss, (
-                                test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10
-                            ) = self.evaluate(test, sess)
+                            test_loss, (test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_MAP) = self.evaluate(test, sess)
 
                         if self.args.performance == "P@5" and dev_PAT5 > best_dev_performance:
                             unchanged = 0
                             best_dev_performance = dev_PAT5
                             result_table.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10,
-                                 test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10]
+                                [epoch, cur_step, dev_PAT5, dev_PAT10, dev_RAT5, dev_RAT10, dev_MAP,
+                                 test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_MAP]
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
@@ -370,9 +337,16 @@ class ModelMultiTagsClassifier(object):
                             unchanged = 0
                             best_dev_performance = dev_RAT10
                             result_table.add_row(
-                                [epoch, dev_PAT1, dev_PAT3, dev_PAT5, dev_PAT10, dev_RAT1, dev_RAT3, dev_RAT5, dev_RAT10,
-                                 test_PAT1, test_PAT3, test_PAT5, test_PAT10, test_RAT1, test_RAT3, test_RAT5, test_RAT10]
-                            )
+                                [epoch, cur_step, dev_PAT5, dev_PAT10, dev_RAT5, dev_RAT10, dev_MAP,
+                                 test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_MAP])
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "MAP" and dev_MAP > best_dev_performance:
+                            unchanged = 0
+                            best_dev_performance = dev_MAP
+                            result_table.add_row(
+                                [epoch, cur_step, dev_PAT5, dev_PAT10, dev_RAT5, dev_RAT10, dev_MAP,
+                                 test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_MAP])
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
