@@ -68,11 +68,13 @@ class ModelMultiTagsClassifier(object):
                         [self.args.hidden_dim, self.args.mlp_dim], [self.args.mlp_dim], self.args.activation)
                     weights_h1, biases_h1 = tf.Variable(w_h1, name='weights_h1'), tf.Variable(b_h1, name='bias_h1')
                     layer_1 = tf.add(tf.matmul(self.h_final, weights_h1), biases_h1)
+                    # act_layer_1 = get_activation_by_name(self.args.activation)(layer_1)
+                    act_layer_1 = tf.nn.relu(layer_1)  # to reduce training time
 
                     w_o, b_o = init_w_b_vals([self.args.mlp_dim, self.output_dim], [self.output_dim], self.args.activation)
                     weights_o, biases_o = tf.Variable(w_o, name='weights_o'), tf.Variable(b_o, name='bias_o')
 
-                    output = tf.matmul(layer_1, weights_o) + biases_o
+                    output = tf.matmul(act_layer_1, weights_o) + biases_o
 
                 else:
                     w_o, b_o = init_w_b_vals([self.args.hidden_dim, self.output_dim], [self.output_dim], self.args.activation)
@@ -289,7 +291,7 @@ class ModelMultiTagsClassifier(object):
                     if i % 10 == 0:
                         myio.say("\r{}/{}".format(i, N))
 
-                    if i % 300 == 0:  # EVAL
+                    if i % 400 == 0:  # EVAL
                         dev_loss = 0
 
                         if dev:
