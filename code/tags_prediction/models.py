@@ -68,6 +68,8 @@ class ModelMultiTagsClassifier(object):
                         [self.args.hidden_dim, self.args.mlp_dim], [self.args.mlp_dim], self.args.activation)
                     weights_h1, biases_h1 = tf.Variable(w_h1, name='weights_h1'), tf.Variable(b_h1, name='bias_h1')
                     layer_1 = tf.add(tf.matmul(self.h_final, weights_h1), biases_h1)
+
+                    # without activation is equivalent to SLP i.e. non linear
                     # act_layer_1 = get_activation_by_name(self.args.activation)(layer_1)
                     act_layer_1 = tf.nn.relu(layer_1)  # to reduce training time
 
