@@ -78,6 +78,19 @@ class QRAPI:
         print 'average all ... ', sum(all_MAP)/len(all_MAP), sum(all_MRR)/len(all_MRR), sum(all_Pat1)/len(all_Pat1), sum(all_Pat5)/len(all_Pat5)
         return all_MAP, all_MRR, all_Pat1, all_Pat5, all_ranked_labels, all_ranked_ids, query_ids, all_ranked_scores
 
+    def write_results(self, data, session, filename):
+        # return for each query: q_id, candidate_id, candidate_rank, candidate_score
+        f = open(filename, 'w')
+        eval_func = self.score_func
+        for idts, idbs, labels, pid, qids in data:
+            scores = eval_func(idts, idbs, session)
+            assert len(scores) == len(labels)
+            ranks = (-scores).argsort()
+            ranked_scores = np.array(scores)[ranks]
+            ranked_ids = np.array(qids)[ranks]
+            for c_rank, (c_id, c_score) in enumerate(zip(ranked_ids, ranked_scores)):
+                f.write('{} _ {} {} {} _\n'.format(pid, c_id, c_rank, c_score))
+
 
 def create_eval_batches(ids_corpus, data, padding_id, pad_left):
     lst = []
@@ -100,6 +113,7 @@ if __name__ == '__main__':
     argparser.add_argument("--corpus", type=str, default="")  # texts_raw_fixed file
     argparser.add_argument("--embeddings", type=str, default="")  # embeddings file
     argparser.add_argument("--test_file", type=str, default="")
+    argparser.add_argument("--full_results_file", type=str, default="")  # to write in
     argparser.add_argument("--results_file", type=str, default="")  # to write in
     argparser.add_argument("--layer", type=str, default="lstm")
     args = argparser.parse_args()
@@ -117,8 +131,8 @@ if __name__ == '__main__':
 
         testmap, testmrr, testpat1, testpat5, rank_labels, rank_ids, qids, rank_scores = myqrapi.evaluate(test, sess)
 
-        if args.results_file:
-            with open(args.results_file, 'w') as f:
+        if args.full_results_file:
+            with open(args.full_results_file, 'w') as f:
                 for i, (_, _, labels, pid, qids) in enumerate(test):
                     print_qids_similar = [x for x, l in zip(qids, labels) if l == 1]
                     print_qids_similar = " ".join([str(x) for x in print_qids_similar])
@@ -135,5 +149,8 @@ if __name__ == '__main__':
                         print_ranked_labels,
                         testmap[i], testmrr[i], testpat1[i], testpat5[i]
                     ))
+
+        if args.results_file:
+            myqrapi.write_results(test, sess, args.results_file)
 
 # after running api and getting results you can run analyzencompareresults and then printspecialcases :)

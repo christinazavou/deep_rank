@@ -87,7 +87,7 @@ def loss2sum(pos_scores, all_neg_scores, query_per_pair):
 
 
 def devloss0(labels, scores):  # OK
-    tuples_diff = []
+    per_query_loss = []
     for query_labels, query_scores in zip(labels, scores):
         pos_scores = [score for label, score in zip(query_labels, query_scores) if label == 1]
         neg_scores = [score for label, score in zip(query_labels, query_scores) if label == 0]
@@ -97,10 +97,12 @@ def devloss0(labels, scores):  # OK
         neg_scores = np.repeat(np.array(neg_scores).reshape([1, -1]), pos_scores.shape[0], 0)
         neg_scores = np.max(neg_scores, 1)
         diff = neg_scores - pos_scores + 1.
-        tuples_diff.append(diff.reshape([-1, 1]))
-    tuples_diff = np.vstack(tuples_diff)
-    tuples_diff = (tuples_diff > 0).astype(np.float32)*tuples_diff
-    return np.mean(tuples_diff)
+        diff = (diff > 0)*diff
+        # print 'diff ', diff
+        per_query_loss.append(np.mean(diff))
+        # print 'ql: ', np.mean(diff)
+    # print 'pql: ', np.mean(np.array(per_query_loss))
+    return np.mean(np.array(per_query_loss))
 
 
 def devloss1(labels, scores):  # OK

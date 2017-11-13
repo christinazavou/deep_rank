@@ -186,8 +186,18 @@ class ModelMultiTagsClassifier(object):
                 optimizer = tf.train.GradientDescentOptimizer(self.args.learning_rate)
 
             if self.args.trainable_encoder:
+                if self.args.activation in ['relu', 'lrelu']:
+                    raise Warning('unimplemented gradient clipping')
+                    # grads_and_vars = optimizer.compute_gradients(self.cost)
+                    # clipped_grads_and_vars = [(tf.clip_by_norm(grad, 1.), var) for grad, var in grads_and_vars]
+                    # train_op = optimizer.apply_gradients(clipped_grads_and_vars, global_step=global_step)
                 train_op = optimizer.minimize(self.cost, global_step=global_step)
             else:
+                if self.args.activation in ['relu', 'lrelu']:
+                    raise Warning('unimplemented gradient clipping')
+                    # grads_and_vars = optimizer.compute_gradients(self.cost, var_list=non_encoder_params)
+                    # clipped_grads_and_vars = [(tf.clip_by_norm(grad, 1.), var) for grad, var in grads_and_vars]
+                    # train_op = optimizer.apply_gradients(clipped_grads_and_vars, global_step=global_step)
                 train_op = optimizer.minimize(self.cost, global_step=global_step, var_list=non_encoder_params)
 
             sess.run(tf.global_variables_initializer())

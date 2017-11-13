@@ -45,6 +45,10 @@ def linear(x):
     return x
 
 
+def lrelu(x, alpha=0.01):
+    return tf.nn.relu(x) - alpha * tf.nn.relu(-x)
+
+
 def get_activation_by_name(name):
     if name.lower() == "relu":
         return tf.nn.relu  # usage tf.nn.relu(features, name=None)
@@ -54,18 +58,18 @@ def get_activation_by_name(name):
         return tf.tanh  # usage tf.tanh(x, name=None)
     elif name.lower() == "softmax":
         return tf.nn.softmax  # usage softmax(logits, dim=-1, name=None)
-    # elif name.lower() == "none" or name.lower() == "linear":
-    #     return linear
+    elif name.lower() == "lrelu":
+        return lrelu
     else:
         raise Exception("unknown activation type: {}".format(name))
 
 
 def init_w_b_vals(w_shape, b_shape, activation):
-    w_vals = tf.random_uniform(w_shape, minval=-0.5, maxval=0.5)
+    w_vals = tf.random_uniform(w_shape, minval=-0.5, maxval=0.5, dtype=tf.float32)
     if activation == 'softmax':
         w_vals *= 0.001
     if activation == 'relu':
-        b_vals = np.ones(b_shape) * 0.01
+        b_vals = tf.ones(b_shape, dtype=np.float32) * 0.01
     else:
-        b_vals = tf.random_uniform(shape=b_shape, minval=-0.5, maxval=0.5)
+        b_vals = tf.random_uniform(shape=b_shape, minval=-0.5, maxval=0.5, dtype=tf.float32)
     return w_vals, b_vals
