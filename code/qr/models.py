@@ -66,19 +66,22 @@ class ModelQR(object):
                 if 'entropy' not in self.args or self.args.entropy == 0:
                     if 'loss' in self.args and self.args.loss == 'loss1':
                         self.loss = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # OK
+                        self.loss1 = loss0(pos_scores, all_neg_scores)  # alternative 1
+                        self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
                     elif 'loss' in self.args and self.args.loss == 'loss2':
                         self.loss = loss2(pos_scores, all_neg_scores)  # OK
+                        self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
+                        self.loss2 = loss0(pos_scores, all_neg_scores)  # alternative 2
                     elif 'loss' in self.args and self.args.loss == 'loss2sum':
                         self.loss = loss2sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
                     elif 'loss' in self.args and self.args.loss == 'loss0sum':
                         self.loss = loss0sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
                     else:
                         self.loss = loss0(pos_scores, all_neg_scores)  # OK
+                        self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
+                        self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
                 else:
                     raise Exception("dont use entropy")
-
-                self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)
-                self.loss2 = loss2(pos_scores, all_neg_scores)
 
             with tf.name_scope('regularization'):
                 l2_reg = 0.

@@ -84,6 +84,8 @@ class ModelMultiTagsClassifier(object):
 
                     output = tf.matmul(self.h_final, weights_o) + biases_o
 
+                self.b_o = biases_o  # for api compatibility
+
                 self.act_output = tf.nn.sigmoid(output)
 
             # self.prediction = tf.where(

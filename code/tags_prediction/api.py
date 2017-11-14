@@ -35,16 +35,15 @@ class TPAPI:
         self.model = model
 
         def predict_func(titles, bodies, cur_sess):
-
-            outputs, predictions = cur_sess.run(
-                [self.model.act_output, self.model.prediction],
+            outputs = cur_sess.run(
+                self.model.act_output,
                 feed_dict={
                     self.model.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                     self.model.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                     self.model.dropout_prob: 0.,
                 }
             )
-            return outputs, predictions
+            return outputs
 
         self.predict_func = predict_func
         say("Prediction function compiled\n")
@@ -53,35 +52,26 @@ class TPAPI:
 
         all_ids = []
         eval_func = self.predict_func
-        outputs, predictions, targets = [], [], []
+        outputs, targets = [], []
         for ids, idts, idbs, tags in data:
             all_ids += ids
-            output, prediction = eval_func(idts, idbs, session)
+            output = eval_func(idts, idbs, session)
             outputs.append(output)
-            predictions.append(prediction)
             targets.append(tags)
 
         outputs = np.vstack(outputs)
-        predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
-        # eval_labels = []
-        # for label in range(targets.shape[1]):
-        #     if (targets[:, label] == np.ones(targets.shape[0])).any():
-        #         eval_labels.append(label)
-        # print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
-        # outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
-
         eval_samples = []
         for sample in range(targets.shape[0]):
             if (targets[sample, :] == np.ones(targets.shape[1])).any():
                 eval_samples.append(sample)
         print '\n{} samples ouf of {} will be evaluated (zero-labeled-samples removed).'.format(len(eval_samples), outputs.shape[0])
-        outputs, predictions, targets = outputs[eval_samples, :], predictions[eval_samples, :], targets[eval_samples, :]
+        outputs, targets = outputs[eval_samples, :], targets[eval_samples, :]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
 
-        ev = Evaluation(outputs, predictions, targets)
+        ev = Evaluation(outputs, None, targets)
 
         all_rankedat10_tags = []
         query_ids = []
@@ -123,6 +113,21 @@ class TPAPI:
         return query_ids, all_rankedat10_tags, list(all_Pat5), list(all_Pat10), list(all_Rat5), list(all_Rat10), \
                upper_bounds_pat5, upper_bounds_pat10, all_MAP
 
+    def write_results(self, data, session, filename, tags_ids):
+        # return for each question: q_id, tag_id, tag_rank, tag_score
+        tags_ids = np.array(tags_ids, str)
+        f = open(filename, 'w')
+        for qids, idts, idbs, tags in data:
+            qid = qids[0]
+            scores = self.predict_func(idts, idbs, session)
+            assert scores.shape == tags.shape
+            scores = scores[0]
+            ranks = (-scores).argsort()
+            ranked_scores = np.array(scores)[ranks]
+            ranked_ids = np.array(tags_ids)[ranks]
+            for t_rank, (t_id, t_score) in enumerate(zip(ranked_ids, ranked_scores)):
+                f.write('{} _ {} {} {} _\n'.format(qid, t_id, t_rank, t_score))
+
 
 def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None):
 
@@ -143,7 +148,7 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None)
     for u in xrange(N):
         i = perm[u]
         q_id = data_ids[i]
-        title, body, tag = ids_corpus[str(q_id)]
+        title, body, tag = ids_corpus[str(q_id)]  # tag is boolean vector
         cnt += 1
         titles.append(title)
         bodies.append(body)
@@ -170,7 +175,9 @@ if __name__ == '__main__':
     argparser.add_argument("--model", type=str)
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--max_seq_len", type=int, default=100)
+    argparser.add_argument("--mlp_dim", type=int, default=50)  # to write in
     argparser.add_argument("--out_dir", type=str)
+    argparser.add_argument("--full_results_file", type=str, default="")  # to write in
     argparser.add_argument("--results_file", type=str, default="")  # to write in
 
     args = argparser.parse_args()
@@ -216,8 +223,8 @@ if __name__ == '__main__':
         print '{} batches.'.format(len(eval_batches))
         R = myqrapi.evaluate(eval_batches, label_tags, os.path.join(args.out_dir, 'test') if args.out_dir else None, sess)
 
-        if args.results_file:
-            with open(args.results_file, 'w') as f:
+        if args.full_results_file:
+            with open(args.full_results_file, 'w') as f:
                 for i in range(len(R[0])):
                     query_id, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10, MAP = \
                         R[0][i], R[1][i], R[2][i], R[3][i], R[4][i], R[5][i], R[6][i], R[7][i], R[8][i]
@@ -231,3 +238,7 @@ if __name__ == '__main__':
                     f.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
                         query_id, real_tags, rankedat10_tags, Pat5, Pat10, Rat5, Rat10, UB5, UB10, MAP
                     ))
+
+        if args.results_file:
+            eval_batches = create_batches(df, ids_corpus, 'test', 1, padding_id)
+            myqrapi.write_results(eval_batches, sess, args.results_file, label_tags)
