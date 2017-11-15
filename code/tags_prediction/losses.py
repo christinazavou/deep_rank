@@ -25,8 +25,36 @@ def considered_examples(target):
     return tf.expand_dims(tf.cast(tf.not_equal(tf.reduce_sum(target, 1), 0), tf.float32), 1)
 
 
-def hinge_loss():
-    raise Exception()
+# i have 900 tags and only 5 can be positive so taking all (p, n) pairs and averaging is not useful
+
+
+def hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [0,1]
+    act_output = tf.reshape(act_output, [-1, 1])
+    tuples_output = tf.nn.embedding_lookup(act_output, tuples)
+    tuples_output = tf.squeeze(tuples_output, 2)
+    positive_scores = tf.reshape(tuples_output[:, 0], [-1, 1])
+    negative_scores = tuples_output[:, 1:]
+    diff = positive_scores - negative_scores + 1.
+    diff = tf.nn.relu(diff)
+    if take_max:
+        diff = tf.reduce_max(diff, 1)
+    loss = tf.reduce_mean(diff)
+    return loss
+
+
+def dev_hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
+    num_tuples = tuples.shape[0]
+    act_output = np.reshape(act_output, [-1, 1])
+    tuples = np.reshape(tuples, [-1])
+    tuples_output = np.reshape(act_output[tuples], [num_tuples, -1])
+    positive_scores = tuples_output[:, 0].reshape([-1, 1])
+    negative_scores = tuples_output[:, 1:]
+    if take_max:
+        negative_scores = np.max(negative_scores).reshape([-1, 1])
+    diff = positive_scores - negative_scores + 1.
+    diff = (diff > 0)*diff
+    loss = np.mean(diff)
+    return loss
 
 
 def dev_entropy_loss(args, targets, outputs):

@@ -101,7 +101,7 @@ def create_idf_weights(corpus_path, embedding_layer, with_tags=False):
     return tf.Variable(weights, name="word_weights", dtype=tf.float32)
 
 
-def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None):
+def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None, N_neq=20):
 
     # returns a list of batches where each batch is a list of (titles, bodies tags-as-np-array)
 
@@ -121,6 +121,10 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None)
     cnt = 0
     titles, bodies, tag_labels = [], [], []
     batches = []
+    tuples = []
+
+    def transform(counter, x, length):
+        return ((counter - 1) * length) + x
 
     for u in xrange(N):
         i = perm[u]
@@ -131,14 +135,33 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None)
         bodies.append(body)
         tag_labels.append(tag)
 
+        q_positive_ids = [transform(cnt, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 1]
+        q_negative_ids = [transform(cnt, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 0]
+        np.random.shuffle(q_negative_ids)
+        q_negative_ids = q_negative_ids[:N_neq]  # consider only 20 negatives
+        tuples += [[pid]+q_negative_ids for pid in q_positive_ids]
+
         if cnt == batch_size or u == N-1:
             titles, bodies, tag_labels = create_one_batch(titles, bodies, tag_labels, padding_id)
-            batches.append((titles, bodies, tag_labels))
+            tuples = create_hinge_batch(tuples)
+            batches.append((titles, bodies, tag_labels, tuples))
 
             titles, bodies, tag_labels = [], [], []
             cnt = 0
+            tuples = []
 
     return batches
+
+
+def create_hinge_batch(triples):
+    # an instance in the triples list (i.e. a triple) is a list of: pid, qids (similar and not)
+    # regularly one batch that can specify hinge loss has 22 question ids
+    # so we create constant sized batches with 22 length x batch length
+    max_len = max(len(x) for x in triples)
+    triples = np.vstack(
+        [np.pad(x, (0, max_len-len(x)), 'edge') for x in triples]
+    ).astype('int32')
+    return triples
 
 
 def create_one_batch(titles, bodies, tag_labels, padding_id):

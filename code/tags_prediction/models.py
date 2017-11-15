@@ -7,7 +7,7 @@ from prettytable import PrettyTable
 import myio
 from nn import get_activation_by_name, init_w_b_vals
 from evaluation import Evaluation
-from losses import entropy_loss, hinge_loss, dev_entropy_loss
+from losses import entropy_loss, dev_hinge_loss, dev_entropy_loss, hinge_loss
 
 
 class ModelMultiTagsClassifier(object):
@@ -30,6 +30,8 @@ class ModelMultiTagsClassifier(object):
             self.target = tf.placeholder(tf.float32, [None, self.output_dim], name='target_tags')
 
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
+
+            self.tuples = tf.placeholder(tf.int32, [None, None], name='tuples')
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):
@@ -99,7 +101,7 @@ class ModelMultiTagsClassifier(object):
                     if 'entropy' not in self.args or self.args.entropy == 1:
                         self.loss = entropy_loss(self.args, self.target, self.act_output)
                     else:
-                        self.loss = hinge_loss()
+                        self.loss = hinge_loss(self.target, self.act_output, self.tuples)
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -123,15 +125,21 @@ class ModelMultiTagsClassifier(object):
     def evaluate(self, eval_batches, sess):
 
         outputs, targets = [], []
-        for titles_b, bodies_b, tags_b in eval_batches:
+        tuples = []
+        for titles_b, bodies_b, tags_b, tuples_b in eval_batches:
             out = self.eval_batch(titles_b, bodies_b, sess)
             outputs.append(out)
             targets.append(tags_b)
+            tuples.append(tuples_b)
 
         outputs = np.vstack(outputs)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
+        tuples = np.vstack(tuples)
 
-        loss = dev_entropy_loss(self.args, targets, outputs)
+        if 'entropy' not in self.args or self.args.entropy == 1:
+            loss = dev_entropy_loss(self.args, targets, outputs)
+        else:
+            loss = dev_hinge_loss(targets, outputs, tuples)
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_samples = []
@@ -144,9 +152,10 @@ class ModelMultiTagsClassifier(object):
 
         ev = Evaluation(outputs, None, targets)
         results = [ev.Precision(5), ev.Precision(10), ev.Recall(5), ev.Recall(10), ev.MeanAveragePrecision()]
+
         return loss, tuple(results)
 
-    def train_batch(self, titles, bodies, y_batch, train_op, global_step, sess):
+    def train_batch(self, titles, bodies, y_batch, tuples, train_op, global_step, sess):
         _, _step, _loss, _cost = sess.run(
             [train_op, global_step, self.loss, self.cost],
             feed_dict={
@@ -154,6 +163,7 @@ class ModelMultiTagsClassifier(object):
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.dropout_prob: np.float32(self.args.dropout),
+                self.tuples: tuples
             }
         )
         return _step, _loss, _cost
@@ -281,7 +291,7 @@ class ModelMultiTagsClassifier(object):
                 train_cost = 0.0
 
                 for i in xrange(N):
-                    titles_b, bodies_b, tag_labels_b = train_batches[i]
+                    titles_b, bodies_b, tag_labels_b, tuples_b = train_batches[i]
 
                     if i % 10 == 0 and self.args.testing:
                         print 'labels in batch: ', np.sum(np.sum(tag_labels_b, 0) > 0)
@@ -289,7 +299,7 @@ class ModelMultiTagsClassifier(object):
                         print '\nemb {}\n'.format(emb[10][0:10])
 
                     cur_step, cur_loss, cur_cost = self.train_batch(
-                        titles_b, bodies_b, tag_labels_b,
+                        titles_b, bodies_b, tag_labels_b, tuples_b,
                         train_op, global_step, sess
                     )
 
