@@ -10,6 +10,7 @@ import myio
 import os
 from losses import loss0, loss1, loss2, loss0sum, loss2sum
 from losses import devloss0, devloss1, devloss2, devloss0sum, devloss2sum
+from losses import dev_entropy_loss
 
 
 class ModelQR(object):
@@ -33,6 +34,8 @@ class ModelQR(object):
 
             self.query_per_pair = tf.placeholder(tf.int32, [None, None], name='query_per_pair')
 
+            self.target_scores = tf.placeholder(tf.float32, [None, None], name='target_scores')
+
     def _initialize_output_graph(self):
 
         with tf.name_scope('scores'):
@@ -51,8 +54,8 @@ class ModelQR(object):
             # [num_of_tuples, candidate size - 1]
             all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
 
-            self.pos_scores = pos_scores
-            self.all_neg_scores = all_neg_scores
+            # self.pos_scores = pos_scores
+            # self.all_neg_scores = all_neg_scores
 
         if 'mlp_dim' in self.args and self.args.mlp_dim != 0:
             raise Exception('unimplemented')  # todo
@@ -81,7 +84,13 @@ class ModelQR(object):
                         self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
                         self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
                 else:
-                    raise Exception("dont use entropy")
+                    x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
+                        labels=self.target_scores,
+                        logits=tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 1:, :], axis=2)
+                    )
+                    self.loss = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+                    self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
+                    self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
 
             with tf.name_scope('regularization'):
                 l2_reg = 0.
@@ -177,8 +186,10 @@ class ModelQR(object):
         MRR = e.MRR()
         P1 = e.Precision(1)
         P5 = e.Precision(5)
-        # hinge_loss = self.loss0(all_labels, all_scores)
-        loss1 = devloss1(all_labels, all_scores)
+        if 'entropy' in self.args and self.args.entropy != 0:
+            loss1 = dev_entropy_loss(all_labels, all_scores)  # todo : encounters nan
+        else:
+            loss1 = devloss1(all_labels, all_scores)
         if 'loss' in self.args and 'sum' in self.args.loss:
             loss0 = devloss0sum(all_labels, all_scores)
             loss2 = devloss2sum(all_labels, all_scores)
@@ -190,6 +201,8 @@ class ModelQR(object):
     def train_batch(self, titles, bodies, pairs, query_per_pair, train_op, global_step, sess):
         # _, _step, _loss, _cost, _pos_scores, _all_neg_scores, _loss1, _loss2 = sess.run(
         #     [train_op, global_step, self.loss, self.cost, self.pos_scores, self.all_neg_scores, self.loss1, self.loss2],
+        target_scores = np.zeros((len(pairs), 21))
+        target_scores[:, 0] = 1.
         _, _step, _loss, _cost, _loss1, _loss2 = sess.run(
             [train_op, global_step, self.loss, self.cost, self.loss1, self.loss2],
             feed_dict={
@@ -197,7 +210,8 @@ class ModelQR(object):
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.pairs_ids_placeholder: pairs,
                 self.dropout_prob: np.float32(self.args.dropout),
-                self.query_per_pair: query_per_pair
+                self.query_per_pair: query_per_pair,
+                self.target_scores: target_scores
             }
         )
         # scores = np.hstack([_pos_scores.reshape([-1, 1]), _all_neg_scores])

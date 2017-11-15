@@ -113,18 +113,16 @@ if __name__ == "__main__":
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
 
+    argparser.add_argument("--mlp_dim_tp", type=int, default=0)
+
     argparser.add_argument("--loss_qr", type=str, default="mean")  # sum, max
     argparser.add_argument("--entropy_qr", type=int, default=0)
     argparser.add_argument("--loss_tp", type=str, default="mean")  # sum, max
     argparser.add_argument("--entropy_tp", type=int, default=1)
 
-    argparser.add_argument("--threshold", type=float, default=0.5)
-    argparser.add_argument("--performance", type=str, default="dev_mrr")  # dev_mrr p_macro, P@5, R@10
+    argparser.add_argument("--performance", type=str, default="dev_map_qr")  # dev_map_qr or dev_map_tp
     argparser.add_argument("--qr_weight", type=float, default=1.)
     argparser.add_argument("--tp_weight", type=float, default=1.)
-    argparser.add_argument("--qr_mul", type=float, default=1.)  # 1 or 0.5 or 0.05
-    argparser.add_argument("--tp_mul", type=float, default=1.)  # 1 or 2 or 20
-    argparser.add_argument("--weight", type=float, default=1.)  # to weight positive targets of tp
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))
