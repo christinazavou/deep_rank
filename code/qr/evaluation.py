@@ -17,7 +17,7 @@ class Evaluation(object):
                     relevant += 1.
             scores.append(relevant*1.0/len(temp))
 
-        return round(100 * (sum(scores)/len(scores)), 3)
+        return round(100 * (sum(scores) / len(scores) if len(scores) > 0 else 0.0), 3)
 
     def Recall(self, recall_at):
         scores = []

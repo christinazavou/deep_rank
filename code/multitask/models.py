@@ -366,15 +366,15 @@ class ModelQRTP(object):
 
                 train_batches = myio.create_batches(ids_corpus_tags, train, self.args.batch_size, self.padding_id)
 
-                N = len(train_batches)
-
                 train_loss_qr = 0.0
                 train_loss_tp = 0.0
                 train_cost = 0.0
 
-                for i in xrange(N):
+                i = -1
+                for batch in train_batches:
+                    i += 1
                     cur_step, cur_loss_qr, cur_loss_tp, cur_cost = self.train_batch(
-                        train_batches[i], train_op, global_step, sess
+                        batch, train_op, global_step, sess
                     )
 
                     summary = sess.run(loss_summary, {loss: cur_loss_qr})
@@ -392,9 +392,9 @@ class ModelQRTP(object):
                     train_cost += cur_cost
 
                     if i % 10 == 0:
-                        say("\r{}/{}".format(i, N))
+                        say("\r{}/N".format(i))
                     if self.args.testing:
-                        print 'labels in batch: ', np.sum(np.sum(train_batches[i][3], 0) > 0)
+                        print 'labels in batch: ', np.sum(np.sum(batch[3], 0) > 0)
 
                     if i % 100 == 0:  # EVAL
                         dev_tp_loss = 0

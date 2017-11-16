@@ -285,13 +285,13 @@ class ModelMultiTagsClassifier(object):
                 if unchanged > patience:
                     break
 
-                N = len(train_batches)
-
                 train_loss = 0.0
                 train_cost = 0.0
 
-                for i in xrange(N):
-                    titles_b, bodies_b, tag_labels_b, tuples_b = train_batches[i]
+                i = 0
+                for batch in train_batches:
+                    i += 1
+                    titles_b, bodies_b, tag_labels_b, tuples_b = batch
 
                     if i % 10 == 0 and self.args.testing:
                         print 'labels in batch: ', np.sum(np.sum(tag_labels_b, 0) > 0)

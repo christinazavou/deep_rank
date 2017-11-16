@@ -144,13 +144,11 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None,
         if cnt == batch_size or u == N-1:
             titles, bodies, tag_labels = create_one_batch(titles, bodies, tag_labels, padding_id)
             tuples = create_hinge_batch(tuples)
-            batches.append((titles, bodies, tag_labels, tuples))
+            yield titles, bodies, tag_labels, tuples
 
             titles, bodies, tag_labels = [], [], []
             cnt = 0
             tuples = []
-
-    return batches
 
 
 def create_hinge_batch(triples):

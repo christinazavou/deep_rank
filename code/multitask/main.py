@@ -40,15 +40,7 @@ def main():
         test = myio.create_eval_batches(ids_corpus_tags, test, padding_id)
 
     if args.train:
-        start_time = time.time()
         train = qaio.read_annotations(args.train)
-        train_batches = myio.create_batches(ids_corpus_tags, train, args.batch_size, padding_id)
-        print("{} to create batches\n".format(time.time()-start_time))
-        print("{} batches, {} tokens in total, {} triples in total\n".format(
-            len(train_batches),
-            sum(len(x[0].ravel())+len(x[1].ravel()) for x in train_batches),
-            sum(len(x[2].ravel()) for x in train_batches)
-        ))
 
         if args.layer.lower() == "lstm":
             from models import LstmQRTP as Model
@@ -115,7 +107,7 @@ if __name__ == "__main__":
 
     argparser.add_argument("--mlp_dim_tp", type=int, default=0)
 
-    argparser.add_argument("--loss_qr", type=str, default="mean")  # sum, max
+    argparser.add_argument("--loss_qr", type=str, default="loss0")
     argparser.add_argument("--entropy_qr", type=int, default=0)
     argparser.add_argument("--loss_tp", type=str, default="mean")  # sum, max
     argparser.add_argument("--entropy_tp", type=int, default=1)

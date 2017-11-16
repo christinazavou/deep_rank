@@ -52,13 +52,9 @@ def main():
     if args.cross_val:
         train, dev, test = myio.create_cross_val_batches(df, ids_corpus, args.batch_size, padding_id)
     else:
-        dev = myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id)
-        test = myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id)
+        dev = list(myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id))
+        test = list(myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id))
         train = myio.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id)
-
-    print '{} batches of {} instances in dev, {} in test and {} in train.'.format(
-        len(dev), args.batch_size, len(test), len(train))
-    print time.time() - s_time
 
     # baselines_eval(train, dev, test)
 

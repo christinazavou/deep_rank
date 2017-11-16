@@ -2,6 +2,9 @@ import numpy as np
 import random
 
 
+# eval gives list, train gives generator
+
+
 def create_eval_batches(ids_corpus, data, padding_id, N_neq=20):
     lst = []
 
@@ -30,6 +33,7 @@ def create_eval_batches(ids_corpus, data, padding_id, N_neq=20):
         tuples = create_hinge_batch(tuples)
         titles, bodies, tag_labels = create_one_batch(titles, bodies, tag_labels, padding_id)
         lst.append((titles, bodies, np.array(qlabels, dtype="int32"), tag_labels, tuples))
+
     return lst
 
 
@@ -96,7 +100,8 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20
             triples = create_hinge_batch(triples)
             query_per_triple = np.array(query_per_triple, np.int32)
             tuples = create_hinge_batch(tuples)
-            batches.append((titles, bodies, triples, query_per_triple, tag_labels, tuples))
+
+            yield titles, bodies, triples, query_per_triple, tag_labels, tuples
 
             titles = []
             bodies = []
@@ -108,8 +113,6 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20
             tuples = []
             cnt_q = 0
             query_per_triple = []
-
-    return batches
 
 
 def create_one_batch(titles, bodies, tag_labels, padding_id):
