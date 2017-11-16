@@ -98,7 +98,7 @@ class ModelQR(object):
                     l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
                 self.l2_reg = l2_reg
 
-            self.cost = self.loss + self.l2_reg
+            self.cost = self.args.weight*self.loss + self.l2_reg
 
     def mlp(self, queries_vec, candidates_vec):  # [None=tuples_num, hidden_dim], [None=tuples_num, 21, hidden_dim]
 
