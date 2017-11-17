@@ -190,13 +190,14 @@ def considered_examples(target):
 # i have 900 tags and only 5 can be positive so taking all (p, n) pairs and averaging is not useful
 
 
+# if take_max = True, then is equal to loss0, if False, then is equal to loss2
 def tphinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [0,1]
     act_output = tf.reshape(act_output, [-1, 1])
     tuples_output = tf.nn.embedding_lookup(act_output, tuples)
     tuples_output = tf.squeeze(tuples_output, 2)
     positive_scores = tf.reshape(tuples_output[:, 0], [-1, 1])
     negative_scores = tuples_output[:, 1:]
-    diff = positive_scores - negative_scores + 1.
+    diff = negative_scores - positive_scores + 1.
     diff = tf.nn.relu(diff)
     if take_max:
         diff = tf.reduce_max(diff, 1)
@@ -204,6 +205,7 @@ def tphinge_loss(target, act_output, tuples, take_max=False):  # act_output whic
     return loss
 
 
+# if take_max = True, then is equal to loss0, if False, then is equal to loss2
 def tpdev_hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
     num_tuples = tuples.shape[0]
     act_output = np.reshape(act_output, [-1, 1])
@@ -213,7 +215,7 @@ def tpdev_hinge_loss(target, act_output, tuples, take_max=False):  # act_output 
     negative_scores = tuples_output[:, 1:]
     if take_max:
         negative_scores = np.max(negative_scores).reshape([-1, 1])
-    diff = positive_scores - negative_scores + 1.
+    diff = negative_scores - positive_scores + 1.
     diff = (diff > 0)*diff
     loss = np.mean(diff)
     return loss

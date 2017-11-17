@@ -5,7 +5,7 @@ import random
 # eval gives list, train gives generator
 
 
-def create_eval_batches(ids_corpus, data, padding_id, N_neq=20):
+def create_eval_batches(ids_corpus, data, padding_id, N_neg=20):
     lst = []
 
     def transform(counter, x, length):
@@ -27,7 +27,7 @@ def create_eval_batches(ids_corpus, data, padding_id, N_neq=20):
             q_positive_ids = [transform(cnt_q, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 1]
             q_negative_ids = [transform(cnt_q, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 0]
             np.random.shuffle(q_negative_ids)
-            q_negative_ids = q_negative_ids[:N_neq]  # consider only 20 negatives
+            q_negative_ids = q_negative_ids[:N_neg]  # consider only 20 negatives
             tuples += [[p_id] + q_negative_ids for p_id in q_positive_ids]
 
         tuples = create_hinge_batch(tuples)

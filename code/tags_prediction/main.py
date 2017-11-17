@@ -52,9 +52,8 @@ def main():
     if args.cross_val:
         train, dev, test = myio.create_cross_val_batches(df, ids_corpus, args.batch_size, padding_id)
     else:
-        dev = list(myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id))
-        test = list(myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id))
-        train = myio.create_batches(df, ids_corpus, 'train', args.batch_size, padding_id)
+        dev = list(myio.create_batches(df, ids_corpus, 'dev', args.batch_size, padding_id, N_neg=args.n_neg))
+        test = list(myio.create_batches(df, ids_corpus, 'test', args.batch_size, padding_id, N_neg=args.n_neg))
 
     # baselines_eval(train, dev, test)
 
@@ -68,7 +67,7 @@ def main():
         model.init_assign_ops = model.load_pre_trained_part(args.load_pre_trained_part)
     print '\nmodel init_assign_ops: {}\n'.format(model.init_assign_ops)
 
-    model.train_model(train, dev=dev, test=test)
+    model.train_model(df, ids_corpus, dev=dev, test=test)
     print '\nEnded at: {}'.format(datetime.now())
 
 
@@ -110,13 +109,13 @@ if __name__ == '__main__':
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
     argparser.add_argument("--threshold", type=float, default=0.5)
-    argparser.add_argument("--performance", type=str, default="MAP")  # P@5, R@10
     argparser.add_argument("--loss", type=str, default="mean")  # sum, max
     argparser.add_argument("--entropy", type=int, default=1)
     argparser.add_argument("--weight", type=float, default=1.0)
     argparser.add_argument("--ignore_examples", type=float, default=0.0)
     argparser.add_argument("--mlp_dim", type=int, default=50)  # 0 if single layer perceptron
-    argparser.add_argument("--patience", type=int, default=5)
+    argparser.add_argument("--patience", type=int, default=8)
+    argparser.add_argument("--n_neg", type=int, default=20)
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

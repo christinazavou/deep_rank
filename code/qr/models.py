@@ -39,6 +39,7 @@ class ModelQR(object):
     def _initialize_output_graph(self):
 
         with tf.name_scope('scores'):
+            # Note: Multiplying two dot vectors (cosine) gives a value in [-1, 1]
             # For testing:
             #   first one in batch is query, the rest are candidate questions
             self.scores = tf.reduce_sum(tf.multiply(self.h_final[0], self.h_final[1:]), axis=1)
@@ -84,9 +85,16 @@ class ModelQR(object):
                         self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
                         self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
                 else:
+                    logits = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 1:, :], axis=2)
+
+                    def normalized(v):
+                        min_ = tf.reduce_min(v)
+                        max_ = tf.reduce_max(v)
+                        return (v - min_) / (max_ - min_)
+
                     x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
                         labels=self.target_scores,
-                        logits=tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 1:, :], axis=2)
+                        logits=normalized(logits)
                     )
                     self.loss = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
                     self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
@@ -187,7 +195,7 @@ class ModelQR(object):
         P1 = e.Precision(1)
         P5 = e.Precision(5)
         if 'entropy' in self.args and self.args.entropy != 0:
-            loss1 = dev_entropy_loss(all_labels, all_scores)  # todo : encounters nan
+            loss1 = dev_entropy_loss(all_labels, all_scores)
         else:
             loss1 = devloss1(all_labels, all_scores)
         if 'loss' in self.args and 'sum' in self.args.loss:
@@ -383,7 +391,7 @@ class ModelQR(object):
                     if i % 10 == 0:
                         say("\r{}/{}".format(i, N))
 
-                    if i % 100 == 0:  # EVAL
+                    if i == N-1 or (i % 10 == 0 and self.args.testing):  # EVAL
                         if dev:
                             dev_MAP, dev_MRR, dev_P1, dev_P5, dloss0, dloss1, dloss2 = self.evaluate(dev, sess)
 

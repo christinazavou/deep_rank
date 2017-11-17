@@ -101,7 +101,7 @@ def create_idf_weights(corpus_path, embedding_layer, with_tags=False):
     return tf.Variable(weights, name="word_weights", dtype=tf.float32)
 
 
-def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None, N_neq=20):
+def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None, N_neg=20):
 
     # returns a list of batches where each batch is a list of (titles, bodies tags-as-np-array)
 
@@ -120,7 +120,6 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None,
     # for one batch:
     cnt = 0
     titles, bodies, tag_labels = [], [], []
-    batches = []
     tuples = []
 
     def transform(counter, x, length):
@@ -138,7 +137,7 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None,
         q_positive_ids = [transform(cnt, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 1]
         q_negative_ids = [transform(cnt, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 0]
         np.random.shuffle(q_negative_ids)
-        q_negative_ids = q_negative_ids[:N_neq]  # consider only 20 negatives
+        q_negative_ids = q_negative_ids[:N_neg]  # consider only 20 negatives
         tuples += [[pid]+q_negative_ids for pid in q_positive_ids]
 
         if cnt == batch_size or u == N-1:

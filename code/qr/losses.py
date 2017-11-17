@@ -169,9 +169,12 @@ def devloss2sum(labels, scores):  # OK
 
 
 def dev_entropy_loss(target_scores, output_scores):
-    target_scores = np.array(target_scores)
-    output_scores = np.array(output_scores)
-    print 'len ', target_scores.shape, output_scores.shape
+    def normalized(v):
+        min_ = np.min(v)
+        max_ = np.max(v)
+        return (v - min_) / (max_ - min_)
+    target_scores = np.array(target_scores, np.float32)
+    output_scores = normalized(np.array(output_scores, np.float32))
     x_entropy = target_scores * (-np.log(output_scores)) + (1.0 - target_scores) * (-np.log(1.0 - output_scores))
     return np.mean(x_entropy)
 

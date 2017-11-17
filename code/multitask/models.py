@@ -357,6 +357,11 @@ class ModelQRTP(object):
                 if not os.path.exists(checkpoint_dir):
                     os.makedirs(checkpoint_dir)
 
+            train_batches = list(myio.create_batches(
+                ids_corpus_tags, train, self.args.batch_size, self.padding_id, N_neq=self.args.n_neg
+            ))
+            N = len(train_batches)
+
             unchanged = 0
             max_epoch = self.args.max_epoch
             for epoch in xrange(max_epoch):
@@ -364,7 +369,9 @@ class ModelQRTP(object):
                 if unchanged > 15:
                     break
 
-                train_batches = myio.create_batches(ids_corpus_tags, train, self.args.batch_size, self.padding_id)
+                train_batches = myio.create_batches(
+                    ids_corpus_tags, train, self.args.batch_size, self.padding_id, N_neq=self.args.n_neg
+                )
 
                 train_loss_qr = 0.0
                 train_loss_tp = 0.0
@@ -392,11 +399,11 @@ class ModelQRTP(object):
                     train_cost += cur_cost
 
                     if i % 10 == 0:
-                        say("\r{}/N".format(i))
+                        say("\r{}/{}".format(i, N))
                     if self.args.testing:
                         print 'labels in batch: ', np.sum(np.sum(batch[3], 0) > 0)
 
-                    if i % 100 == 0:  # EVAL
+                    if i == N-1 or (i % 10 == 0 and self.args.testing):  # EVAL
                         dev_tp_loss = 0
                         dev_qr_loss = 0
 

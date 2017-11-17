@@ -8,6 +8,7 @@ import myio
 from nn import get_activation_by_name, init_w_b_vals
 from evaluation import Evaluation
 from losses import entropy_loss, dev_hinge_loss, dev_entropy_loss, hinge_loss
+from losses import modified_hinge_loss, dev_modified_hinge_loss
 
 
 class ModelMultiTagsClassifier(object):
@@ -101,7 +102,11 @@ class ModelMultiTagsClassifier(object):
                     if 'entropy' not in self.args or self.args.entropy == 1:
                         self.loss = entropy_loss(self.args, self.target, self.act_output)
                     else:
-                        self.loss = hinge_loss(self.target, self.act_output, self.tuples)
+                        if 'loss' in self.args and self.args.loss == 'loss0':
+                            self.loss = hinge_loss(self.target, self.act_output, self.tuples, take_max=True)
+                        else:
+                            # self.loss = modified_hinge_loss(self.target, self.act_output, self.tuples)
+                            self.loss = hinge_loss(self.target, self.act_output, self.tuples)
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -139,7 +144,11 @@ class ModelMultiTagsClassifier(object):
         if 'entropy' not in self.args or self.args.entropy == 1:
             loss = dev_entropy_loss(self.args, targets, outputs)
         else:
-            loss = dev_hinge_loss(targets, outputs, tuples)
+            if 'loss' in self.args and self.loss == 'loss0':
+                loss = dev_hinge_loss(targets, outputs, tuples, take_max=True)
+            else:
+                loss = dev_modified_hinge_loss(targets, outputs, tuples)
+                # loss = dev_hinge_loss(targets, outputs, tuples)
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_samples = []
@@ -168,7 +177,7 @@ class ModelMultiTagsClassifier(object):
         )
         return _step, _loss, _cost
 
-    def train_model(self, train_batches, dev=None, test=None):
+    def train_model(self, df, ids_corpus, dev=None, test=None):
         with tf.Session() as sess:
 
             result_table = PrettyTable(
@@ -285,6 +294,10 @@ class ModelMultiTagsClassifier(object):
                 if unchanged > patience:
                     break
 
+                train_batches = list(myio.create_batches(
+                    df, ids_corpus, 'train', self.args.batch_size, self.padding_id, N_neq=self.args.n_neg)
+                )
+                N = len(train_batches)
                 train_loss = 0.0
                 train_cost = 0.0
 
@@ -313,9 +326,9 @@ class ModelMultiTagsClassifier(object):
                     train_cost += cur_cost
 
                     if i % 10 == 0:
-                        myio.say("\r{}/N".format(i))
+                        myio.say("\r{}/{}".format(i, N))
 
-                    if i % 400 == 0:  # EVAL
+                    if i == N-1 or (i % 10 == 0 and self.args.testing):  # EVAL
                         dev_loss = 0
 
                         if dev:
@@ -350,24 +363,7 @@ class ModelMultiTagsClassifier(object):
                         if test:
                             test_loss, (test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_MAP) = self.evaluate(test, sess)
 
-                        if self.args.performance == "P@5" and dev_PAT5 > best_dev_performance:
-                            unchanged = 0
-                            best_dev_performance = dev_PAT5
-                            result_table.add_row(
-                                [epoch, cur_step, dev_PAT5, dev_PAT10, dev_RAT5, dev_RAT10, dev_MAP,
-                                 test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_MAP]
-                            )
-                            if self.args.save_dir != "":
-                                self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "R@10" and dev_RAT10 > best_dev_performance:
-                            unchanged = 0
-                            best_dev_performance = dev_RAT10
-                            result_table.add_row(
-                                [epoch, cur_step, dev_PAT5, dev_PAT10, dev_RAT5, dev_RAT10, dev_MAP,
-                                 test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_MAP])
-                            if self.args.save_dir != "":
-                                self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "MAP" and dev_MAP > best_dev_performance:
+                        if dev_MAP > best_dev_performance:
                             unchanged = 0
                             best_dev_performance = dev_MAP
                             result_table.add_row(
@@ -376,12 +372,12 @@ class ModelMultiTagsClassifier(object):
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
 
-                        myio.say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tDevLoss={:.3f}\tPRE={:.2f},{:.2f}\n".format(
+                        myio.say("\r\n\nEpoch {}\tcost={:.3f}\tloss={:.3f}\tDevLoss={:.3f}\tMAP={:.2f},{:.2f}\n".format(
                             epoch,
                             train_cost / (i+1),  # i.e. divided by N training batches
                             train_loss / (i+1),  # i.e. divided by N training batches
                             dev_loss,
-                            dev_RAT10 if self.args.performance == "R@10" else dev_PAT5,
+                            dev_MAP,
                             best_dev_performance
                         ))
                         myio.say("\n{}\n".format(result_table))
