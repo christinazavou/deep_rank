@@ -313,7 +313,7 @@ class ModelMultiTagsClassifier(object):
                     train_cost += cur_cost
 
                     if i % 10 == 0:
-                        myio.say("\r{}/{}".format(i, N))
+                        myio.say("\r{}/N".format(i))
 
                     if i % 400 == 0:  # EVAL
                         dev_loss = 0

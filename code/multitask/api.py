@@ -50,10 +50,10 @@ class QRTPAPI:
                 self.model.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.model.dropout_prob: 0.,
             }
-            _scores, _outputs, _predictions = cur_sess.run(
-                [self.model.scores, self.model.act_output, self.model.prediction], feed_dict
+            _scores, _outputs = cur_sess.run(
+                [self.model.scores, self.model.act_output], feed_dict
             )
-            return _scores, _outputs, _predictions
+            return _scores, _outputs
         self.score_func = score_func
         qaio.say("scoring function compiled\n")
 
@@ -61,13 +61,12 @@ class QRTPAPI:
 
         res = []
 
-        outputs, predictions, targets = [], [], []
+        outputs, targets = [], []
 
         for idts, idbs, id_labels, tags_b in data:
-            cur_scores, cur_out, cur_pred = self.score_func(idts, idbs, session)
+            cur_scores, cur_out = self.score_func(idts, idbs, session)
 
             outputs.append(cur_out)
-            predictions.append(cur_pred)
             targets.append(tags_b)
 
             assert len(id_labels) == len(cur_scores)
@@ -79,31 +78,36 @@ class QRTPAPI:
         print '\nMAP: {} MRR: {} P@1: {} P@5: {}\n'.format(e.MAP(), e.MRR(), e.Precision(1), e.Precision(5))
 
         outputs = np.vstack(outputs)
-        predictions = np.vstack(predictions)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
 
-        # results = [round(ev.lr_ap_score(), 4), round(ev.lr_loss(), 4), round(ev.cov_error(), 4)]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
-        # eval_labels = []
-        # for label in range(targets.shape[1]):
-        #     if (targets[:, label] == np.ones(targets.shape[0])).any():
-        #         eval_labels.append(label)
-        # print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
-        # outputs, predictions, targets = outputs[:, eval_labels], predictions[:, eval_labels], targets[:, eval_labels]
-
         eval_samples = []
         for sample in range(targets.shape[0]):
             if (targets[sample, :] == np.ones(targets.shape[1])).any():
                 eval_samples.append(sample)
         print '\n{} samples ouf of {} will be evaluated (zero-labeled-samples removed).'.format(len(eval_samples), outputs.shape[0])
-        outputs, predictions, targets = outputs[eval_samples, :], predictions[eval_samples, :], targets[eval_samples, :]
+        outputs, targets = outputs[eval_samples, :], targets[eval_samples, :]
         """------------------------------------------remove ill evaluation-------------------------------------------"""
-        ev = TPEvaluation(outputs, predictions, targets)
+        ev = TPEvaluation(outputs, None, targets)
 
         print '\naverage: P@5: {} P@10: {} R@5: {} R@10: {} UBP@5: {} UBP@10: {} MAP: {}\n'.format(
             ev.Precision(5), ev.Precision(10), ev.Recall(5), ev.Recall(10), ev.upper_bound(5), ev.upper_bound(10),
             ev.MeanAveragePrecision()
         )
+
+    def write_results(self, data, session, filename):
+        # return for each query: q_id, candidate_id, candidate_rank, candidate_score
+        f = open(filename, 'w')
+        eval_func = self.score_func
+        for idts, idbs, labels, pid, qids in data:
+            scores, _ = eval_func(idts, idbs, session)
+            assert len(scores) == len(labels)
+            ranks = (-scores).argsort()
+            ranked_scores = np.array(scores)[ranks]
+            ranked_ids = np.array(qids)[ranks]
+            for c_rank, (c_id, c_score) in enumerate(zip(ranked_ids, ranked_scores)):
+                f.write('{} _ {} {} {} _\n'.format(pid, c_id, c_rank, c_score))
+
 
 if __name__ == '__main__':
     argparser = argparse.ArgumentParser(sys.argv[0])
@@ -111,11 +115,12 @@ if __name__ == '__main__':
     argparser.add_argument("--corpus", type=str, default="")  # texts_raw_fixed file
     argparser.add_argument("--corpus_w_tags", type=str, default="")  # texts_raw_fixed_with_tags file
     argparser.add_argument("--embeddings", type=str, default="")  # embeddings file
-    argparser.add_argument("--dev", type=str, default="")
-    argparser.add_argument("--test", type=str, default="")
+    argparser.add_argument("--test_file", type=str, default="")
     argparser.add_argument("--tags_file", type=str, default="")
     argparser.add_argument("--model", type=str)
+    argparser.add_argument("--mlp_dim_tp", type=int, default=50)
     argparser.add_argument("--layer", type=str, default="lstm")
+    argparser.add_argument("--results_file", type=str, default="")  # to write in
     args = argparser.parse_args()
     print '\n', args, '\n'
 
@@ -132,11 +137,9 @@ if __name__ == '__main__':
 
         padding_id = embedding_layer.vocab_map["<padding>"]
 
-        dev = qaio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
-        dev = myio.create_eval_batches(ids_corpus_tags, dev, padding_id)
-        myqrapi.evaluate(dev, sess)
-        del dev
-
         test = qaio.read_annotations(args.test, K_neg=-1, prune_pos_cnt=-1)
         test = myio.create_eval_batches(ids_corpus_tags, test, padding_id)
         myqrapi.evaluate(test, sess)
+
+        if args.results_file:
+            myqrapi.write_results(test, sess, args.results_file)
