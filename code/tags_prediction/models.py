@@ -104,9 +104,10 @@ class ModelMultiTagsClassifier(object):
                     else:
                         if 'loss' in self.args and self.args.loss == 'loss0':
                             self.loss = hinge_loss(self.target, self.act_output, self.tuples, take_max=True)
-                        else:
-                            # self.loss = modified_hinge_loss(self.target, self.act_output, self.tuples)
+                        elif 'loss' in self.args and self.args.loss == 'loss2':
                             self.loss = hinge_loss(self.target, self.act_output, self.tuples)
+                        else:
+                            self.loss = modified_hinge_loss(self.target, self.act_output, self.tuples)
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -144,11 +145,12 @@ class ModelMultiTagsClassifier(object):
         if 'entropy' not in self.args or self.args.entropy == 1:
             loss = dev_entropy_loss(self.args, targets, outputs)
         else:
-            if 'loss' in self.args and self.loss == 'loss0':
+            if 'loss' in self.args and self.args.loss == 'loss0':
                 loss = dev_hinge_loss(targets, outputs, tuples, take_max=True)
+            elif 'loss' in self.args and self.args.loss == 'loss2':
+                loss = dev_hinge_loss(targets, outputs, tuples)
             else:
                 loss = dev_modified_hinge_loss(targets, outputs, tuples)
-                # loss = dev_hinge_loss(targets, outputs, tuples)
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_samples = []
@@ -295,8 +297,9 @@ class ModelMultiTagsClassifier(object):
                     break
 
                 train_batches = list(myio.create_batches(
-                    df, ids_corpus, 'train', self.args.batch_size, self.padding_id, N_neq=self.args.n_neg)
-                )
+                    df, ids_corpus, 'train', self.args.batch_size,
+                    self.padding_id, N_neg=self.args.n_neg, samples_file=self.args.samples_file
+                ))
                 N = len(train_batches)
                 train_loss = 0.0
                 train_cost = 0.0

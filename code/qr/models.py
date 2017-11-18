@@ -50,17 +50,17 @@ class ModelQR(object):
             pairs_vecs = tf.nn.embedding_lookup(self.h_final, self.pairs_ids_placeholder, name='pairs_vecs')
             # [num_of_tuples, n_d]
             query_vecs = pairs_vecs[:, 0, :]
-            # [num_of_tuples]
-            pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
-            # [num_of_tuples, candidate size - 1]
-            all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
 
-            # self.pos_scores = pos_scores
-            # self.all_neg_scores = all_neg_scores
+            if 'mlp_dim' in self.args and self.args.mlp_dim != 0:
+                pos_scores, all_neg_scores = self.mlp(query_vecs, pairs_vecs[:, 1, :], pairs_vecs[:, 2:, :])
+            else:
+                # [num_of_tuples]
+                pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
+                # [num_of_tuples, candidate size - 1]
+                all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
 
-        if 'mlp_dim' in self.args and self.args.mlp_dim != 0:
-            raise Exception('unimplemented')  # todo
-            self.mlp(query_vecs, pairs_vecs[:, 1:, :])
+            self.pos_scores = pos_scores
+            self.all_neg_scores = all_neg_scores
 
         with tf.name_scope('cost'):
             # h_final can have negative values, pos_scores and neg_scores have values in [0,1]
@@ -70,20 +70,20 @@ class ModelQR(object):
                 if 'entropy' not in self.args or self.args.entropy == 0:
                     if 'loss' in self.args and self.args.loss == 'loss1':
                         self.loss = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # OK
-                        self.loss1 = loss0(pos_scores, all_neg_scores)  # alternative 1
-                        self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
+                        # self.loss1 = loss0(pos_scores, all_neg_scores)  # alternative 1
+                        # self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
                     elif 'loss' in self.args and self.args.loss == 'loss2':
                         self.loss = loss2(pos_scores, all_neg_scores)  # OK
-                        self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
-                        self.loss2 = loss0(pos_scores, all_neg_scores)  # alternative 2
+                        # self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
+                        # self.loss2 = loss0(pos_scores, all_neg_scores)  # alternative 2
                     elif 'loss' in self.args and self.args.loss == 'loss2sum':
                         self.loss = loss2sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
                     elif 'loss' in self.args and self.args.loss == 'loss0sum':
                         self.loss = loss0sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
                     else:
                         self.loss = loss0(pos_scores, all_neg_scores)  # OK
-                        self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
-                        self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
+                        # self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
+                        # self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
                 else:
                     logits = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 1:, :], axis=2)
 
@@ -97,8 +97,8 @@ class ModelQR(object):
                         logits=normalized(logits)
                     )
                     self.loss = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
-                    self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
-                    self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
+                    # self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
+                    # self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
 
             with tf.name_scope('regularization'):
                 l2_reg = 0.
@@ -108,37 +108,39 @@ class ModelQR(object):
 
             self.cost = self.args.weight*self.loss + self.l2_reg
 
-    def mlp(self, queries_vec, candidates_vec):  # [None=tuples_num, hidden_dim], [None=tuples_num, 21, hidden_dim]
+    # [tuples_num, hidden_dim],[tuples_num, hidden_dim], [tuples_num, 21, hidden_dim]
+    def mlp(self, queries_vec, positives_vec, negatives_vec):
 
-        # [None=tuples_num, 21, hidden_dim]
-        q_exp = tf.tile(tf.reshape(queries_vec, (-1, 1, self.args.hidden_dim)), (1, 21, 1))
-        # [None=tuples_num*2, 21, hidden_dim]
-        a = tf.reshape(
-            tf.concat([q_exp[:, ::2, :], candidates_vec[:, ::2, :]], axis=1),
-            (-1, 21/2+1, self.args.hidden_dim*2)
-        )
-        b = tf.reshape(
-            tf.concat([q_exp[:, 1::2, :], candidates_vec[:, 1::2, :]], axis=1),
-            (-1, 21/2, self.args.hidden_dim*2)
-        )
-        mixed = tf.stack([a, b], axis=1)
-        self.mixed1 = mixed
-        # [None=tuples_num*21, hidden_dim*2]
-        mixed = tf.reshape(mixed, (-1, self.args.hidden_dim*2))
+        # [tuples_num, 20, hidden_dim]
+        q_exp = tf.tile(tf.reshape(queries_vec, (-1, 1, self.args.hidden_dim)), (1, 20, 1))
 
-        self.mixed2 = mixed
-        return
+        # [tuples_num, hidden_dim*2]
+        q_vec_p_vec = tf.reshape(tf.stack([queries_vec, positives_vec], axis=1), (-1, 2*self.args.hidden_dim))
+
+        # [tuples_num*20, hidden_dim*2]
+        q_vecs_n_vecs = tf.reshape(tf.stack([q_exp, negatives_vec], axis=1), (-1, 2*self.args.hidden_dim))
 
         with tf.name_scope('MLP'):
-            self.h = self.layer(mixed, self.args.hidden_dim*2, self.args.mlp_dim, 'HL1')
-            self.o = self.layer(self.h, self.args.mlp_dim, 1, 'O')
+            q_vec_p_vec = tf.nn.dropout(q_vec_p_vec, 1.-self.args.dropout)
+            q_vecs_n_vecs = tf.nn.dropout(q_vecs_n_vecs, 1.-self.args.dropout)
+            w_h1, b_h1 = init_w_b_vals(
+                [self.args.hidden_dim*2, self.args.mlp_dim], [self.args.mlp_dim], self.args.activation
+            )
+            weights_h1, biases_h1 = tf.Variable(w_h1, name='weights_h1'), tf.Variable(b_h1, name='bias_h1')
+            h_layer_p = tf.add(tf.matmul(q_vec_p_vec, weights_h1), biases_h1)
+            h_layer_n = tf.add(tf.matmul(q_vecs_n_vecs, weights_h1), biases_h1)
+            act_h_layer_p = tf.nn.relu(h_layer_p)
+            act_h_layer_n = tf.nn.relu(h_layer_n)
+            w_o, b_o = init_w_b_vals(
+                [self.args.mlp_dim, 1], [1], self.args.activation
+            )
+            weights_o, biases_o = tf.Variable(w_o, name='weights_o'), tf.Variable(b_o, name='bias_o')
+            output_p = tf.matmul(act_h_layer_p, weights_o) + biases_o
+            output_n = tf.matmul(act_h_layer_n, weights_o) + biases_o
+            act_output_p = tf.clip_by_value(tf.nn.sigmoid(output_p), 0., 1.)
+            act_output_n = tf.clip_by_value(tf.nn.sigmoid(output_n), 0., 1.)
 
-    def layer(self, previous, hidden_dim_in, hidden_dim_out, name):
-        w, b = init_w_b_vals([hidden_dim_in, hidden_dim_out], [hidden_dim_out], self.args.activation)
-        weights, biases = tf.Variable(w, name='w{}'.format(name)), tf.Variable(b, name='b{}'.format(name))
-        r = tf.add(tf.matmul(previous, weights), biases)
-        r = tf.nn.relu(r)
-        return r
+        return act_output_p, tf.reshape(act_output_n, (-1, 20))
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):
@@ -207,12 +209,13 @@ class ModelQR(object):
         return MAP, MRR, P1, P5, loss0, loss1, loss2
 
     def train_batch(self, titles, bodies, pairs, query_per_pair, train_op, global_step, sess):
-        # _, _step, _loss, _cost, _pos_scores, _all_neg_scores, _loss1, _loss2 = sess.run(
-        #     [train_op, global_step, self.loss, self.cost, self.pos_scores, self.all_neg_scores, self.loss1, self.loss2],
         target_scores = np.zeros((len(pairs), 21))
         target_scores[:, 0] = 1.
-        _, _step, _loss, _cost, _loss1, _loss2 = sess.run(
-            [train_op, global_step, self.loss, self.cost, self.loss1, self.loss2],
+        _, _step, _loss, _cost, _pos_scores, _all_neg_scores = sess.run(
+            [
+                train_op, global_step, self.loss, self.cost, self.pos_scores, self.all_neg_scores,
+                # self.loss1, self.loss2
+            ],
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
@@ -222,6 +225,7 @@ class ModelQR(object):
                 self.target_scores: target_scores
             }
         )
+        print 'pos neg ', np.min(_pos_scores), np.max(_pos_scores), np.min(_all_neg_scores), np.max(_all_neg_scores)
         # scores = np.hstack([_pos_scores.reshape([-1, 1]), _all_neg_scores])
         # ranks = (-scores).argsort()
         # ranked_labels = []
@@ -229,7 +233,7 @@ class ModelQR(object):
         #     ranked_labels.append(np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])[rank])
         # ev = Evaluation(ranked_labels)
         # return _step, _loss, _cost, ev.MAP(), ev.MRR(), ev.Precision(1), ev.Precision(5)
-        return _step, _loss, _cost, None, None, None, None, _loss1, _loss2
+        return _step, _loss, _cost, None, None, None, None, None, None
 
     def train_model(self, ids_corpus, train, dev=None, test=None):
         with tf.Session() as sess:
@@ -245,6 +249,8 @@ class ModelQR(object):
             global_step = tf.Variable(0, name="global_step", trainable=False)
             optimizer = tf.train.AdamOptimizer(self.args.learning_rate)
             train_op = optimizer.minimize(self.cost, global_step=global_step)
+
+            print '\n\ntrainable params: ', tf.trainable_variables(), '\n\n'
 
             sess.run(tf.global_variables_initializer())
             emb = sess.run(self.embeddings)
@@ -268,12 +274,12 @@ class ModelQR(object):
                 os.path.join(self.args.save_dir, "summaries", "train", "cost"), sess.graph
             )
 
-            train_loss1_writer = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "train", "loss1"),
-            )
-            train_loss2_writer = tf.summary.FileWriter(
-                os.path.join(self.args.save_dir, "summaries", "train", "loss2"),
-            )
+            # train_loss1_writer = tf.summary.FileWriter(
+            #     os.path.join(self.args.save_dir, "summaries", "train", "loss1"),
+            # )
+            # train_loss2_writer = tf.summary.FileWriter(
+            #     os.path.join(self.args.save_dir, "summaries", "train", "loss2"),
+            # )
 
             # train_map_writer = tf.summary.FileWriter(
             #     os.path.join(self.args.save_dir, "summaries", "train", "map"),
@@ -365,12 +371,12 @@ class ModelQR(object):
                     train_cost_writer.add_summary(summary, cur_step)
                     train_cost_writer.flush()
 
-                    summary = sess.run(loss_summary, {loss: curloss1})
-                    train_loss1_writer.add_summary(summary, cur_step)
-                    train_loss1_writer.flush()
-                    summary = sess.run(loss_summary, {loss: curloss2})
-                    train_loss2_writer.add_summary(summary, cur_step)
-                    train_loss2_writer.flush()
+                    # summary = sess.run(loss_summary, {loss: curloss1})
+                    # train_loss1_writer.add_summary(summary, cur_step)
+                    # train_loss1_writer.flush()
+                    # summary = sess.run(loss_summary, {loss: curloss2})
+                    # train_loss2_writer.add_summary(summary, cur_step)
+                    # train_loss2_writer.flush()
 
                     # summary = sess.run(train_summary, {train_eval: curmap})
                     # train_map_writer.add_summary(summary, cur_step)
@@ -391,7 +397,7 @@ class ModelQR(object):
                     if i % 10 == 0:
                         say("\r{}/{}".format(i, N))
 
-                    if i == N-1 or (i % 10 == 0 and self.args.testing):  # EVAL
+                    if i == N-1 or (i % 10 == 0 and 'testing' in self.args and self.args.testing):  # EVAL
                         if dev:
                             dev_MAP, dev_MRR, dev_P1, dev_P5, dloss0, dloss1, dloss2 = self.evaluate(dev, sess)
 

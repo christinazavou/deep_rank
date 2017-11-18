@@ -40,11 +40,6 @@ def read_df(df_file, chunk_size=None, read_columns=None):
 def evaluate(test_x, test_y, model):
     """"""
     """------------------------------------------remove ill evaluation-------------------------------------------"""
-    # eval_labels = []
-    # for label in range(test_y.shape[1]):
-    #     if (test_y[:, label] == np.ones(test_y.shape[0])).any():
-    #         eval_labels.append(label)
-    # print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), test_y.shape[1])
     eval_samples = []
     for sample in range(test_y.shape[0]):
         if (test_y[sample, :] == np.ones(test_y.shape[1])).any():
@@ -60,17 +55,34 @@ def evaluate(test_x, test_y, model):
     y_scores = model.predict_proba(test_x)  # probability for each class
     predictions = model.predict(test_x)  # 1 or 0 for each class
 
-    # """------------------------------------------remove ill evaluation-------------------------------------------"""
-    # y_scores = y_scores[:, eval_labels]
-    # predictions = predictions[:, eval_labels]
-    # """------------------------------------------remove ill evaluation-------------------------------------------"""
-
     ev = Evaluation(y_scores, predictions, test_y)
     print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\tUBP@5: {}\tUBP@10: {}\tMAP: {}\n'.format(
         ev.Precision(1), ev.Precision(3), ev.Precision(5), ev.Precision(10),
         ev.Recall(1), ev.Recall(3), ev.Recall(5), ev.Recall(10), ev.upper_bound(5), ev.upper_bound(10),
         ev.MeanAveragePrecision()
     )
+
+
+def write_sampled_negatives(df_path, tf_idf_vec, model, labels, pfile, N_neg=100):
+    df = read_df(df_path)
+    df = df.fillna(u'')
+    data_x = (df['title'] + u' ' + df['body_truncated']).values
+    data_y = df[labels].values
+    ids = df['id'].values
+
+    data_x = tf_idf_vec.transform(data_x)
+    print data_x.shape, data_x.dtype, type(data_x), len(ids)
+
+    y_scores = model.predict_proba(data_x)  # probability for each class
+    y_scores = np.equal(data_y, 0).astype(np.float32) * y_scores  # keep only scores of negative tags
+    ranked_scores = y_scores.argsort()[:, ::-1][:, 0:N_neg]
+    sampled_tags = np.array(labels)[ranked_scores]
+    print ranked_scores.shape
+
+    samples_dict = {}
+    for i, q_id in enumerate(ids):
+        samples_dict[q_id] = (ranked_scores[i], sampled_tags[i])
+    pickle.dump(samples_dict, open(pfile, 'wb'), 2)
 
 
 def get_data(df, type_name, labels):
@@ -174,11 +186,14 @@ def main():
         save_model(clf, args.model_file)
         tuned_model = clf
 
-    print 'EVALUATE ON DEV\n'
-    evaluate(x_dev, y_dev, tuned_model)  # in case of cross val don't look at dev eval
+    if args.samples_file:
+        write_sampled_negatives(args.df_path, tf_idf_vec, tuned_model, label_tags, args.samples_file, N_neg=args.n_neg)
+    else:
+        print 'EVALUATE ON DEV\n'
+        evaluate(x_dev, y_dev, tuned_model)  # in case of cross val don't look at dev eval
 
-    print 'EVALUATE ON TEST\n'
-    evaluate(x_test, y_test, tuned_model)
+        print 'EVALUATE ON TEST\n'
+        evaluate(x_test, y_test, tuned_model)
 
     print 'Finished at: ', str(datetime.now())
 
@@ -198,6 +213,8 @@ if __name__ == '__main__':
     argparser.add_argument("--njobs", type=int, default=3)
 
     argparser.add_argument("--cross_val", type=int, default=0)
+    argparser.add_argument("--samples_file", type=str)
+    argparser.add_argument("--n_neg", type=int, default=100)
 
     args = argparser.parse_args()
     print args, '\n'

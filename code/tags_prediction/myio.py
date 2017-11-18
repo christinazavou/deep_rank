@@ -4,6 +4,7 @@ import random
 from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
 import tensorflow as tf
+import pickle
 
 
 def say(s, stream=sys.stdout):
@@ -101,7 +102,11 @@ def create_idf_weights(corpus_path, embedding_layer, with_tags=False):
     return tf.Variable(weights, name="word_weights", dtype=tf.float32)
 
 
-def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None, N_neg=20):
+def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None, N_neg=20, samples_file=None):
+
+    samples_dict = None
+    if samples_file:
+        samples_dict = pickle.load(open(samples_file, 'rb'))
 
     # returns a list of batches where each batch is a list of (titles, bodies tags-as-np-array)
 
@@ -136,9 +141,15 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None,
 
         q_positive_ids = [transform(cnt, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 1]
         q_negative_ids = [transform(cnt, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 0]
+        if samples_dict:
+            neg_samples, neg_sampled_tags = samples_dict[q_id]  # 100 tags
+            neg_samples = list(neg_samples)
+            neg_samples = [transform(cnt, idx, tag.shape[0]) for idx in neg_samples]
+            assert set(neg_samples) < set(q_negative_ids)
+            q_negative_ids = neg_samples
         np.random.shuffle(q_negative_ids)
         q_negative_ids = q_negative_ids[:N_neg]  # consider only 20 negatives
-        tuples += [[pid]+q_negative_ids for pid in q_positive_ids]
+        tuples += [[pid]+q_negative_ids for pid in q_positive_ids]  # if no positives, no tuples added
 
         if cnt == batch_size or u == N-1:
             titles, bodies, tag_labels = create_one_batch(titles, bodies, tag_labels, padding_id)
