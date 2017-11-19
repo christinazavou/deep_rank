@@ -106,7 +106,8 @@ class ModelQR(object):
                     l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
                 self.l2_reg = l2_reg
 
-            self.cost = self.args.weight*self.loss + self.l2_reg
+            weight = 1. if 'weight' not in self.args else self.args.weight
+            self.cost = weight*self.loss + self.l2_reg
 
     # [tuples_num, hidden_dim],[tuples_num, hidden_dim], [tuples_num, 21, hidden_dim]
     def mlp(self, queries_vec, positives_vec, negatives_vec):
