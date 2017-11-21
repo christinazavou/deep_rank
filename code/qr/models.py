@@ -212,9 +212,10 @@ class ModelQR(object):
     def train_batch(self, titles, bodies, pairs, query_per_pair, train_op, global_step, sess):
         target_scores = np.zeros((len(pairs), 21))
         target_scores[:, 0] = 1.
-        _, _step, _loss, _cost, _pos_scores, _all_neg_scores = sess.run(
+        _, _step, _loss, _cost = sess.run(
             [
-                train_op, global_step, self.loss, self.cost, self.pos_scores, self.all_neg_scores,
+                train_op, global_step, self.loss, self.cost,
+                # self.pos_scores, self.all_neg_scores,
                 # self.loss1, self.loss2
             ],
             feed_dict={
@@ -226,7 +227,7 @@ class ModelQR(object):
                 self.target_scores: target_scores
             }
         )
-        print 'pos neg ', np.min(_pos_scores), np.max(_pos_scores), np.min(_all_neg_scores), np.max(_all_neg_scores)
+        # print 'pos neg ', np.min(_pos_scores), np.max(_pos_scores), np.min(_all_neg_scores), np.max(_all_neg_scores)
         # scores = np.hstack([_pos_scores.reshape([-1, 1]), _all_neg_scores])
         # ranks = (-scores).argsort()
         # ranked_labels = []
