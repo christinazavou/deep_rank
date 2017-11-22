@@ -37,7 +37,7 @@ class ModelQRTP(object):
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
             self.tuples = tf.placeholder(tf.int32, [None, None], name='tuples')
             self.target_scores = tf.placeholder(tf.float32, [None, None], name='target_scores')
-            self.tag_samples = tf.placeholder(tf.int32, [None, None], name='tag_samples')
+            # self.tag_samples = tf.placeholder(tf.int32, [None, None], name='tag_samples')
 
     def _initialize_output_graph_qa(self):
 
@@ -228,7 +228,7 @@ class ModelQRTP(object):
         return MAP, MRR, P1, P5, loss_qr, loss_tp, tuple(results)
 
     def train_batch(self, batch, train_op, global_step, sess):
-        titles, bodies, pairs, tags, tuples, tag_samples = batch
+        titles, bodies, pairs, tags, tuples = batch
         target_scores = np.zeros((len(pairs), 21))
         target_scores[:, 0] = 1.
         _, _step, _loss_qr, _loss_tp, _cost = sess.run(
@@ -241,7 +241,7 @@ class ModelQRTP(object):
                 self.dropout_prob: np.float32(self.args.dropout),
                 self.tuples: tuples,
                 self.target_scores: target_scores,
-                self.tag_samples: tag_samples
+                # self.tag_samples: tag_samples
             }
         )
         return _step, _loss_qr, _loss_tp, _cost

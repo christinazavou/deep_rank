@@ -71,7 +71,7 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20
     bodies = []
     triples = []
     tag_labels = []
-    tag_samples = []
+    # tag_samples = []
 
     tuples = []
     cnt_q = 0
@@ -107,8 +107,7 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20
                 np.random.shuffle(q_negative_ids)
                 q_negative_ids = q_negative_ids[:N_neq]  # consider only 20 negatives
                 tuples += [[p_id] + q_negative_ids for p_id in q_positive_ids]
-                tag_samples.append(q_positive_ids+q_negative_ids)
-                tmp = q_positive_ids + q_negative_ids
+                # tag_samples.append(q_positive_ids+q_negative_ids)
 
         pid = pid2id[pid]
         pos = [pid2id[q] for q, l in zip(qids, qlabels) if l == 1 and q in pid2id]
@@ -121,9 +120,9 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20
             triples = create_hinge_batch(triples)
             tuples = create_hinge_batch(tuples)
 
-            tag_samples = create_hinge_batch(tag_samples)
+            # tag_samples = create_hinge_batch(tag_samples)
 
-            yield titles, bodies, triples, tag_labels, tuples, tag_samples
+            yield titles, bodies, triples, tag_labels, tuples
 
             titles = []
             bodies = []
@@ -134,7 +133,7 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20
 
             tuples = []
             cnt_q = 0
-            tag_samples = []
+            # tag_samples = []
 
 
 def create_one_batch(titles, bodies, tag_labels, padding_id):

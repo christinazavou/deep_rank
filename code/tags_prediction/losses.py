@@ -24,11 +24,25 @@ def considered_examples(target):
     return tf.expand_dims(tf.cast(tf.not_equal(tf.reduce_sum(target, 1), 0), tf.float32), 1)
 
 
+def sampled_entropy_loss(target, act_output, tag_samples):
+    act_output = tf.reshape(act_output, [-1, 1])
+    samples_output = tf.nn.embedding_lookup(act_output, tag_samples)
+    samples_output = tf.squeeze(samples_output, 2)
+    target = tf.reshape(target, [-1, 1])
+    samples_target = tf.nn.embedding_lookup(target, tag_samples)
+    samples_target = tf.squeeze(samples_target, 2)
+    # [num_questions, num_samples]
+    samples_entropy = samples_target * (-tf.log(samples_output)) + (1.0 - samples_target) * (-tf.log(1.0 - samples_output))
+    entropy_per_question = tf.reduce_sum(samples_entropy, 1)
+    loss = tf.reduce_mean(entropy_per_question)
+    return loss
+
+
 # i have 900 tags and only 5 can be positive so taking all (p, n) pairs and averaging is not useful
 
 
 # if take_max = True, then is equal to loss0, if False, then is equal to loss2
-def hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
+def hinge_loss(act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
     act_output = tf.reshape(act_output, [-1, 1])
     tuples_output = tf.nn.embedding_lookup(act_output, tuples)
     tuples_output = tf.squeeze(tuples_output, 2)
@@ -42,7 +56,7 @@ def hinge_loss(target, act_output, tuples, take_max=False):  # act_output which 
     return loss
 
 
-def modified_hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
+def modified_hinge_loss(act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
     act_output = tf.reshape(act_output, [-1, 1])
     tuples_output = tf.nn.embedding_lookup(act_output, tuples)
     tuples_output = tf.squeeze(tuples_output, 2)
@@ -54,7 +68,9 @@ def modified_hinge_loss(target, act_output, tuples, take_max=False):  # act_outp
 
 
 # if take_max = True, then is equal to loss0, if False, then is equal to loss2
-def dev_hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
+def dev_hinge_loss(act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
+    print 'act output ', act_output
+    print 'tuples ', tuples
     num_tuples = tuples.shape[0]
     act_output = np.reshape(act_output, [-1, 1])
     tuples = np.reshape(tuples, [-1])
@@ -69,7 +85,7 @@ def dev_hinge_loss(target, act_output, tuples, take_max=False):  # act_output wh
     return loss
 
 
-def dev_modified_hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
+def dev_modified_hinge_loss(act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
     num_tuples = tuples.shape[0]
     act_output = np.reshape(act_output, [-1, 1])
     tuples = np.reshape(tuples, [-1])
@@ -90,4 +106,18 @@ def dev_entropy_loss(args, targets, outputs):
         loss = np.max(np.sum(x_entropy, 1))
     else:
         loss = np.mean(np.sum(x_entropy, 1))
+    return loss
+
+
+def dev_sampled_entropy_loss(target, act_output, tag_samples):
+    rows = np.repeat(np.array([range(tag_samples.shape[0])]).T, repeats=tag_samples.shape[1], axis=1)
+    cols = tag_samples
+
+    samples_output = act_output[rows, cols]
+    samples_target = target[rows, cols]
+
+    # [num_questions, num_samples]
+    samples_entropy = samples_target * (-np.log(samples_output)) + (1.0 - samples_target) * (-np.log(1.0 - samples_output))
+    entropy_per_question = np.sum(samples_entropy, 1)
+    loss = np.mean(entropy_per_question)
     return loss

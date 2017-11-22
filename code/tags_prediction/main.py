@@ -110,7 +110,7 @@ if __name__ == '__main__':
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
     argparser.add_argument("--threshold", type=float, default=0.5)
-    argparser.add_argument("--loss", type=str, default="loss2")  # sum, max
+    argparser.add_argument("--loss", type=str, default="loss2")
     argparser.add_argument("--entropy", type=int, default=1)
     argparser.add_argument("--weight", type=float, default=1.0)
     argparser.add_argument("--ignore_examples", type=float, default=0.0)

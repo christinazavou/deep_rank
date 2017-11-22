@@ -126,6 +126,7 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None,
     cnt = 0
     titles, bodies, tag_labels = [], [], []
     tuples = []
+    # tag_samples = []
 
     def transform(counter, x, length):
         return ((counter - 1) * length) + x
@@ -139,26 +140,32 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None,
         bodies.append(body)
         tag_labels.append(tag)
 
-        q_positive_ids = [transform(cnt, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 1]
-        q_negative_ids = [transform(cnt, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 0]
+        q_positive_idx = [idx for idx, label in enumerate(tag) if label == 1]
+        q_negative_idx = [idx for idx, label in enumerate(tag) if label == 0]
+        q_positive_ids = [transform(cnt, idx, tag.shape[0]) for idx in q_positive_idx]
+        q_negative_ids = [transform(cnt, idx, tag.shape[0]) for idx in q_negative_idx]
         if samples_dict:
             neg_samples, neg_sampled_tags = samples_dict[q_id]  # 100 tags
             neg_samples = list(neg_samples)
-            neg_samples = [transform(cnt, idx, tag.shape[0]) for idx in neg_samples]
+            q_negative_idx = neg_samples
+            neg_samples = [transform(cnt, idx, tag.shape[0]) for idx in q_negative_idx]
             assert set(neg_samples) < set(q_negative_ids)
             q_negative_ids = neg_samples
         np.random.shuffle(q_negative_ids)
         q_negative_ids = q_negative_ids[:N_neg]  # consider only 20 negatives
         tuples += [[pid]+q_negative_ids for pid in q_positive_ids]  # if no positives, no tuples added
+        # tag_samples.append(q_positive_idx + q_negative_idx)
 
         if cnt == batch_size or u == N-1:
             titles, bodies, tag_labels = create_one_batch(titles, bodies, tag_labels, padding_id)
             tuples = create_hinge_batch(tuples)
+            # tag_samples = create_hinge_batch(tag_samples)
             yield titles, bodies, tag_labels, tuples
 
             titles, bodies, tag_labels = [], [], []
             cnt = 0
             tuples = []
+            # tag_samples = []
 
 
 def create_hinge_batch(triples):

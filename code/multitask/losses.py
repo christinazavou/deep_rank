@@ -220,6 +220,7 @@ def tptrialloss(target, act_output, tag_samples):
     # loss = tf.reduce_mean(per_query_entropy)
 
     # case 2:
+    raise Exception('should it be idx or id in tag_sampels?')
     act_output = tf.reshape(act_output, [-1, 1])
     samples_output = tf.nn.embedding_lookup(act_output, tag_samples)
     samples_output = tf.squeeze(samples_output, 2)

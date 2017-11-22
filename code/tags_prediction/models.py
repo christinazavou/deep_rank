@@ -8,7 +8,7 @@ import myio
 from nn import get_activation_by_name, init_w_b_vals
 from evaluation import Evaluation
 from losses import entropy_loss, dev_hinge_loss, dev_entropy_loss, hinge_loss
-from losses import modified_hinge_loss, dev_modified_hinge_loss
+from losses import modified_hinge_loss, dev_modified_hinge_loss  # , sampled_entropy_loss, dev_sampled_entropy_loss
 
 
 class ModelMultiTagsClassifier(object):
@@ -33,6 +33,7 @@ class ModelMultiTagsClassifier(object):
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
 
             self.tuples = tf.placeholder(tf.int32, [None, None], name='tuples')
+            # self.tag_samples = tf.placeholder(tf.int32, [None, None], name='tag_samples')
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):
@@ -90,6 +91,7 @@ class ModelMultiTagsClassifier(object):
                 self.b_o = biases_o  # for api compatibility
 
                 self.act_output = tf.nn.sigmoid(output)
+                # self.act_output = tf.nn.tanh(output)
 
             # self.prediction = tf.where(
             #     self.act_output > self.args.threshold, tf.ones_like(self.act_output), tf.zeros_like(self.act_output)
@@ -103,11 +105,11 @@ class ModelMultiTagsClassifier(object):
                         self.loss = entropy_loss(self.args, self.target, self.act_output)
                     else:
                         if 'loss' in self.args and self.args.loss == 'loss0':
-                            self.loss = hinge_loss(self.target, self.act_output, self.tuples, take_max=True)
+                            self.loss = hinge_loss(self.act_output, self.tuples, take_max=True)
                         elif 'loss' in self.args and self.args.loss == 'loss2':
-                            self.loss = hinge_loss(self.target, self.act_output, self.tuples)
+                            self.loss = hinge_loss(self.act_output, self.tuples)
                         else:
-                            self.loss = modified_hinge_loss(self.target, self.act_output, self.tuples)
+                            self.loss = modified_hinge_loss(self.act_output, self.tuples)
 
                 with tf.name_scope('regularization'):
                     l2_reg = 0.
@@ -132,25 +134,28 @@ class ModelMultiTagsClassifier(object):
 
         outputs, targets = [], []
         tuples = []
+        # tag_samples = []
         for titles_b, bodies_b, tags_b, tuples_b in eval_batches:
             out = self.eval_batch(titles_b, bodies_b, sess)
             outputs.append(out)
             targets.append(tags_b)
             tuples.append(tuples_b)
+            # tag_samples.append(tag_samples_b)
 
         outputs = np.vstack(outputs)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
         tuples = np.vstack(tuples)
+        # tag_samples = np.vstack(tag_samples).astype(np.int32)
 
         if 'entropy' not in self.args or self.args.entropy == 1:
             loss = dev_entropy_loss(self.args, targets, outputs)
         else:
             if 'loss' in self.args and self.args.loss == 'loss0':
-                loss = dev_hinge_loss(targets, outputs, tuples, take_max=True)
+                loss = dev_hinge_loss(outputs, tuples, take_max=True)
             elif 'loss' in self.args and self.args.loss == 'loss2':
-                loss = dev_hinge_loss(targets, outputs, tuples)
+                loss = dev_hinge_loss(outputs, tuples)
             else:
-                loss = dev_modified_hinge_loss(targets, outputs, tuples)
+                loss = dev_modified_hinge_loss(outputs, tuples)
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_samples = []
@@ -174,7 +179,8 @@ class ModelMultiTagsClassifier(object):
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
                 self.bodies_words_ids_placeholder: bodies.T,  # IT IS TRANSPOSE ;)
                 self.dropout_prob: np.float32(self.args.dropout),
-                self.tuples: tuples
+                self.tuples: tuples,
+                # self.tag_samples: tag_samples
             }
         )
         return _step, _loss, _cost
