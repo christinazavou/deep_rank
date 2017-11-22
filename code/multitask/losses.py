@@ -2,7 +2,7 @@ import tensorflow as tf
 import numpy as np
 
 
-LEN_NEGATIVES = 20
+LEN_NEGATIVES_QR = 20
 
 
 def qrloss0(pos_scores, all_neg_scores):
@@ -20,7 +20,7 @@ def qrloss0sum(pos_scores, all_neg_scores, query_per_pair):
     diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.
     diff = tf.nn.relu(diff)
     # [num_of_tuples+1, 20]
-    diff = tf.concat([tf.zeros((1, LEN_NEGATIVES)), diff], 0)
+    diff = tf.concat([tf.zeros((1, LEN_NEGATIVES_QR)), diff], 0)
     newqpp = query_per_pair + 1
     # [batch_size, 10, 20]
     emb_loss = tf.nn.embedding_lookup(diff, newqpp)
@@ -37,7 +37,7 @@ def qrloss1(pos_scores, all_neg_scores, query_per_pair):
     diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.
     diff = tf.nn.relu(diff)
     # [num_of_tuples+1, 20]
-    diff = tf.concat([tf.zeros((1, LEN_NEGATIVES)), diff], 0)
+    diff = tf.concat([tf.zeros((1, LEN_NEGATIVES_QR)), diff], 0)
     newqpp = query_per_pair + 1
     # [batch_size, 10, 20]
     emb_loss = tf.nn.embedding_lookup(diff, newqpp)
@@ -62,7 +62,7 @@ def qrloss2sum(pos_scores, all_neg_scores, query_per_pair):
     diff = all_neg_scores - tf.reshape(pos_scores, [-1, 1]) + 1.
     diff = tf.nn.relu(diff)
     # [num_of_tuples+1, 20]
-    diff = tf.concat([tf.zeros((1, LEN_NEGATIVES)), diff], 0)
+    diff = tf.concat([tf.zeros((1, LEN_NEGATIVES_QR)), diff], 0)
     newqpp = query_per_pair + 1
     # [batch_size, 10, 20]
     emb_loss = tf.nn.embedding_lookup(diff, newqpp)
@@ -164,6 +164,10 @@ def qrdev_entropy_loss(target_scores, output_scores):
     return np.mean(x_entropy)
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# ---------------------------------------------------------------------------------------------------------------------
+
+
 def tpentropy_loss(args, target, act_output):
     # Entropy measures the "information" or "uncertainty" of a random variable. When you are using base
     #  2, it is measured in bits; and there can be more than one bit of information in a variable. if
@@ -171,9 +175,8 @@ def tpentropy_loss(args, target, act_output):
     # 1.15 bits of information per sample (need 1.5 bits to represent a sample), on average."""
 
     w = 1. if 'weight' not in args else args.weight
-    weighted_entropy = target * (-tf.log(act_output)) * w + (1.0 - target) * (
-    -tf.log(1.0 - act_output))
-    weighted_entropy *= considered_examples(target)
+    weighted_entropy = target * (-tf.log(act_output)) * w + (1.0 - target) * (-tf.log(1.0 - act_output))
+    # weighted_entropy *= considered_examples(target)
 
     if 'loss' in args and args.loss == "sum":
         return tf.reduce_sum(tf.reduce_sum(weighted_entropy, axis=1), name='x_entropy')
@@ -191,7 +194,7 @@ def considered_examples(target):
 
 
 # if take_max = True, then is equal to loss0, if False, then is equal to loss2
-def tphinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [0,1]
+def tphinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
     act_output = tf.reshape(act_output, [-1, 1])
     tuples_output = tf.nn.embedding_lookup(act_output, tuples)
     tuples_output = tf.squeeze(tuples_output, 2)
@@ -202,6 +205,32 @@ def tphinge_loss(target, act_output, tuples, take_max=False):  # act_output whic
     if take_max:
         diff = tf.reduce_max(diff, 1)
     loss = tf.reduce_mean(diff)
+    return loss
+
+
+def tptrialloss(target, act_output, tag_samples):
+
+    # case 1:
+
+    # entropy = target * (-tf.log(act_output)) + (1.0 - target) * (-tf.log(1.0 - act_output))
+    # # [batch_size, 22, num_of_tags]
+    # pairs_entropies = tf.nn.embedding_lookup(entropy, pairs)
+    # pairs_entropies = tf.reduce_sum(pairs_entropies, 2)
+    # per_query_entropy = tf.reduce_max(pairs_entropies, 1)
+    # loss = tf.reduce_mean(per_query_entropy)
+
+    # case 2:
+    act_output = tf.reshape(act_output, [-1, 1])
+    samples_output = tf.nn.embedding_lookup(act_output, tag_samples)
+    samples_output = tf.squeeze(samples_output, 2)
+    target = tf.reshape(target, [-1, 1])
+    samples_target = tf.nn.embedding_lookup(target, tag_samples)
+    samples_target = tf.squeeze(samples_target, 2)
+    # [num_questions, num_samples]
+    samples_entropy = samples_target * (-tf.log(samples_output)) + (1.0 - samples_target) * (-tf.log(1.0 - samples_output))
+    entropy_per_question = tf.reduce_sum(samples_entropy, 1)
+    loss = tf.reduce_mean(entropy_per_question)
+
     return loss
 
 

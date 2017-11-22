@@ -9,8 +9,7 @@ def entropy_loss(args, target, act_output):
     # 1.15 bits of information per sample (need 1.5 bits to represent a sample), on average."""
 
     w = 1. if 'weight' not in args else args.weight
-    weighted_entropy = target * (-tf.log(act_output)) * w + (1.0 - target) * (
-    -tf.log(1.0 - act_output))
+    weighted_entropy = target * (-tf.log(act_output)) * w + (1.0 - target) * (-tf.log(1.0 - act_output))
     weighted_entropy *= considered_examples(target)
 
     if 'loss' in args and args.loss == "sum":
@@ -29,7 +28,7 @@ def considered_examples(target):
 
 
 # if take_max = True, then is equal to loss0, if False, then is equal to loss2
-def hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [0,1]
+def hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
     act_output = tf.reshape(act_output, [-1, 1])
     tuples_output = tf.nn.embedding_lookup(act_output, tuples)
     tuples_output = tf.squeeze(tuples_output, 2)
@@ -43,7 +42,7 @@ def hinge_loss(target, act_output, tuples, take_max=False):  # act_output which 
     return loss
 
 
-def modified_hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [0,1]
+def modified_hinge_loss(target, act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
     act_output = tf.reshape(act_output, [-1, 1])
     tuples_output = tf.nn.embedding_lookup(act_output, tuples)
     tuples_output = tf.squeeze(tuples_output, 2)

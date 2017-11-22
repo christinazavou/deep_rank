@@ -11,7 +11,7 @@ import os
 import myio
 from losses import qrdev_entropy_loss, qrdevloss0, qrdevloss0sum, qrdevloss1, qrdevloss2, qrdevloss2sum, qrloss0, \
     qrloss0sum, qrloss1, qrloss2, qrloss2sum
-from losses import tpdev_entropy_loss, tpdev_hinge_loss, tpentropy_loss, tphinge_loss
+from losses import tpdev_entropy_loss, tpdev_hinge_loss, tpentropy_loss, tphinge_loss, tptrialloss
 
 
 class ModelQRTP(object):
@@ -36,8 +36,8 @@ class ModelQRTP(object):
 
             self.dropout_prob = tf.placeholder(tf.float32, name='dropout_prob')
             self.tuples = tf.placeholder(tf.int32, [None, None], name='tuples')
-            self.query_per_pair = tf.placeholder(tf.int32, [None, None], name='query_per_pair')
             self.target_scores = tf.placeholder(tf.float32, [None, None], name='target_scores')
+            self.tag_samples = tf.placeholder(tf.int32, [None, None], name='tag_samples')
 
     def _initialize_output_graph_qa(self):
 
@@ -48,21 +48,14 @@ class ModelQRTP(object):
             query_vecs = pairs_vecs[:, 0, :]
             pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
             all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
-            neg_scores = tf.reduce_max(all_neg_scores, axis=1)
 
         with tf.name_scope('QaLoss'):
 
             if 'entropy_qr' not in self.args or self.args.entropy_qr == 0:
-                if 'loss_qr' in self.args and self.args.loss_qr == 'loss1':
-                    self.loss_qr = qrloss1(pos_scores, all_neg_scores, self.query_per_pair)  # OK
-                elif 'loss_qr' in self.args and self.args.loss_qr == 'loss2':
-                    self.loss_qr = qrloss2(pos_scores, all_neg_scores)  # OK
-                elif 'loss_qr' in self.args and self.args.loss_qr == 'loss2sum':
-                    self.loss_qr = qrloss2sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
-                elif 'loss_qr' in self.args and self.args.loss_qr == 'loss0sum':
-                    self.loss_qr = qrloss0sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
+                if 'loss_qr' in self.args and self.args.loss_qr == 'loss2':
+                    self.loss_qr = qrloss2(pos_scores, all_neg_scores)
                 else:
-                    self.loss_qr = qrloss0(pos_scores, all_neg_scores)  # OK
+                    self.loss_qr = qrloss0(pos_scores, all_neg_scores)
             else:
                 x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
                     labels=self.target_scores,
@@ -110,7 +103,13 @@ class ModelQRTP(object):
             if 'entropy_tp' not in self.args or self.args.entropy_tp == 1:
                 self.loss_tp = tpentropy_loss(self.args, self.target, self.act_output)
             else:
-                self.loss_tp = tphinge_loss(self.target, self.act_output, self.tuples)
+
+                if 'loss_tp' not in self.args or self.args.loss_tp == 'loss2':
+                    self.loss_tp = tphinge_loss(self.target, self.act_output, self.tuples)
+                else:
+                    self.loss_tp = tphinge_loss(self.target, self.act_output, self.tuples, take_max=True)
+
+                # self.trial_loss = tptrialloss(self.target, self.act_output, self.tag_samples)
 
     def _initialize_cost_function(self):
         with tf.name_scope('cost'):
@@ -119,7 +118,9 @@ class ModelQRTP(object):
                 for param in set(tf.trainable_variables() + [self.embeddings]):  # in case not trainable emb
                     l2_reg += tf.nn.l2_loss(param) * self.args.l2_reg
                 self.l2_reg = l2_reg
-            self.cost = self.args.qr_weight*self.loss_qr + self.args.tp_weight*self.loss_tp + self.l2_reg
+            self.loss_qr *= self.args.qr_weight  # to visualize in Tensorboard
+            self.loss_tp *= self.args.tp_weight  # to visualize in Tensorboard
+            self.cost = self.loss_qr + self.loss_tp + self.l2_reg
 
     @staticmethod
     def normalize_2d(x, eps=1e-8):
@@ -227,7 +228,7 @@ class ModelQRTP(object):
         return MAP, MRR, P1, P5, loss_qr, loss_tp, tuple(results)
 
     def train_batch(self, batch, train_op, global_step, sess):
-        titles, bodies, pairs, qpp, tags, tuples = batch
+        titles, bodies, pairs, tags, tuples, tag_samples = batch
         target_scores = np.zeros((len(pairs), 21))
         target_scores[:, 0] = 1.
         _, _step, _loss_qr, _loss_tp, _cost = sess.run(
@@ -239,7 +240,8 @@ class ModelQRTP(object):
                 self.target: tags,
                 self.dropout_prob: np.float32(self.args.dropout),
                 self.tuples: tuples,
-                self.target_scores: target_scores
+                self.target_scores: target_scores,
+                self.tag_samples: tag_samples
             }
         )
         return _step, _loss_qr, _loss_tp, _cost
@@ -261,7 +263,8 @@ class ModelQRTP(object):
             dev_PAT5, dev_PAT10, dev_RAT5, dev_RAT10, dev_map = 0, 0, 0, 0, 0
             test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_map = 0, 0, 0, 0, 0
 
-            best_dev_performance = -1
+            best_qr_dev_performance = -1
+            best_tp_dev_performance = -1
 
             # Define Training procedure
             global_step = tf.Variable(0, name="global_step", trainable=False)
@@ -358,7 +361,7 @@ class ModelQRTP(object):
                     os.makedirs(checkpoint_dir)
 
             train_batches = list(myio.create_batches(
-                ids_corpus_tags, train, self.args.batch_size, self.padding_id, N_neq=self.args.n_neg
+                ids_corpus_tags, train, self.args.batch_size, self.padding_id, N_neq=self.args.n_neg, samples_file=self.args.samples_file
             ))
             N = len(train_batches)
 
@@ -459,9 +462,9 @@ class ModelQRTP(object):
                                 test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_map
                             ) = self.evaluate(test, sess)
 
-                        if self.args.performance == "dev_map_qr" and dev_MAP > best_dev_performance:
+                        if self.args.performance == "dev_map_qr" and dev_MAP > best_qr_dev_performance:
                             unchanged = 0
-                            best_dev_performance = dev_MAP
+                            best_qr_dev_performance = dev_MAP
                             result_table_qr.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )
@@ -471,9 +474,22 @@ class ModelQRTP(object):
                             )
                             if self.args.save_dir != "":
                                 self.save(sess, checkpoint_prefix, cur_step)
-                        elif self.args.performance == "dev_map_tp" and dev_map > best_dev_performance:
+                        elif self.args.performance == "dev_map_tp" and dev_map > best_tp_dev_performance:
                             unchanged = 0
-                            best_dev_performance = dev_map
+                            best_tp_dev_performance = dev_map
+                            result_table_qr.add_row(
+                                [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
+                            )
+                            result_table_tp.add_row(
+                                [epoch, dev_PAT5, dev_PAT10, dev_RAT5, dev_RAT10, dev_map,
+                                 test_PAT5, test_PAT10, test_RAT5, test_RAT10, test_map]
+                            )
+                            if self.args.save_dir != "":
+                                self.save(sess, checkpoint_prefix, cur_step)
+                        elif self.args.performance == "" and (dev_MAP > best_qr_dev_performance or dev_map > best_tp_dev_performance):
+                            unchanged = 0
+                            best_tp_dev_performance = dev_map if dev_map > best_tp_dev_performance else best_tp_dev_performance
+                            best_qr_dev_performance = dev_MAP if dev_MAP > best_qr_dev_performance else best_qr_dev_performance
                             result_table_qr.add_row(
                                 [epoch, dev_MAP, dev_MRR, dev_P1, dev_P5, test_MAP, test_MRR, test_P1, test_P5]
                             )

@@ -63,7 +63,7 @@ class QRTPAPI:
 
         outputs, targets = [], []
 
-        for idts, idbs, id_labels, tags_b in data:
+        for idts, idbs, id_labels, tags_b, tuples_b, pid, qids in data:
             cur_scores, cur_out = self.score_func(idts, idbs, session)
 
             outputs.append(cur_out)
@@ -99,7 +99,7 @@ class QRTPAPI:
         # return for each query: q_id, candidate_id, candidate_rank, candidate_score
         f = open(filename, 'w')
         eval_func = self.score_func
-        for idts, idbs, labels, pid, qids in data:
+        for idts, idbs, labels, tags, tuples, pid, qids in data:
             scores, _ = eval_func(idts, idbs, session)
             assert len(scores) == len(labels)
             ranks = (-scores).argsort()
@@ -107,6 +107,38 @@ class QRTPAPI:
             ranked_ids = np.array(qids)[ranks]
             for c_rank, (c_id, c_score) in enumerate(zip(ranked_ids, ranked_scores)):
                 f.write('{} _ {} {} {} _\n'.format(pid, c_id, c_rank, c_score))
+
+
+def create_eval_batches(ids_corpus, data, padding_id, N_neg=20):
+    lst = []
+
+    def transform(counter, x, length):
+        return ((counter - 1) * length) + x
+
+    for pid, qids, qlabels in data:
+        titles = []
+        bodies = []
+        tag_labels = []
+        cnt_q = 0
+        tuples = []
+        for id in [pid]+qids:
+            cnt_q += 1
+            title, body, tag = ids_corpus[str(id)]
+            titles.append(title)
+            bodies.append(body)
+            tag_labels.append(tag)
+
+            q_positive_ids = [transform(cnt_q, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 1]
+            q_negative_ids = [transform(cnt_q, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 0]
+            np.random.shuffle(q_negative_ids)
+            q_negative_ids = q_negative_ids[:N_neg]  # consider only 20 negatives
+            tuples += [[p_id] + q_negative_ids for p_id in q_positive_ids]
+
+        tuples = myio.create_hinge_batch(tuples)
+        titles, bodies, tag_labels = myio.create_one_batch(titles, bodies, tag_labels, padding_id)
+        lst.append((titles, bodies, np.array(qlabels, dtype="int32"), tag_labels, tuples, pid, qids))
+
+    return lst
 
 
 if __name__ == '__main__':
@@ -137,8 +169,8 @@ if __name__ == '__main__':
 
         padding_id = embedding_layer.vocab_map["<padding>"]
 
-        test = qaio.read_annotations(args.test, K_neg=-1, prune_pos_cnt=-1)
-        test = myio.create_eval_batches(ids_corpus_tags, test, padding_id)
+        test = qaio.read_annotations(args.test_file, K_neg=-1, prune_pos_cnt=-1)
+        test = create_eval_batches(ids_corpus_tags, test, padding_id)
         myqrapi.evaluate(test, sess)
 
         if args.results_file:

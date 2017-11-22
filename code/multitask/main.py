@@ -33,11 +33,11 @@ def main():
 
     if args.dev:
         dev = qaio.read_annotations(args.dev, K_neg=-1, prune_pos_cnt=-1)
-        dev = myio.create_eval_batches(ids_corpus_tags, dev, padding_id, N_neg=args.n_neg)
+        dev = myio.create_eval_batches(ids_corpus_tags, dev, padding_id, N_neg=args.n_neg, samples_file=args.samples_file)
 
     if args.test:
         test = qaio.read_annotations(args.test, K_neg=-1, prune_pos_cnt=-1)
-        test = myio.create_eval_batches(ids_corpus_tags, test, padding_id, N_neg=args.n_neg)
+        test = myio.create_eval_batches(ids_corpus_tags, test, padding_id, N_neg=args.n_neg, samples_file=args.samples_file)
 
     if args.train:
         train = qaio.read_annotations(args.train)
@@ -109,13 +109,15 @@ if __name__ == "__main__":
 
     argparser.add_argument("--loss_qr", type=str, default="loss0")
     argparser.add_argument("--entropy_qr", type=int, default=0)
-    argparser.add_argument("--loss_tp", type=str, default="mean")  # sum, max
+    argparser.add_argument("--loss_tp", type=str, default="loss2")
     argparser.add_argument("--entropy_tp", type=int, default=1)
 
-    argparser.add_argument("--performance", type=str, default="dev_map_qr")  # dev_map_qr or dev_map_tp
+    argparser.add_argument("--performance", type=str, default="")  # dev_map_qr or dev_map_tp
     argparser.add_argument("--qr_weight", type=float, default=1.)
     argparser.add_argument("--tp_weight", type=float, default=1.)
     argparser.add_argument("--n_neg", type=int, default=20)
+
+    argparser.add_argument("--samples_file", type=str)
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

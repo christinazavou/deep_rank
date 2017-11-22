@@ -1,11 +1,17 @@
 import numpy as np
 import random
+import pickle
 
 
 # eval gives list, train gives generator
 
 
-def create_eval_batches(ids_corpus, data, padding_id, N_neg=20):
+def create_eval_batches(ids_corpus, data, padding_id, N_neg=20, samples_file=None):
+
+    samples_dict = None
+    if samples_file:
+        samples_dict = pickle.load(open(samples_file, 'rb'))
+
     lst = []
 
     def transform(counter, x, length):
@@ -26,6 +32,12 @@ def create_eval_batches(ids_corpus, data, padding_id, N_neg=20):
 
             q_positive_ids = [transform(cnt_q, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 1]
             q_negative_ids = [transform(cnt_q, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 0]
+            if samples_dict:
+                neg_samples, neg_sampled_tags = samples_dict[int(id)]  # 100 tags
+                neg_samples = list(neg_samples)
+                neg_samples = [transform(cnt_q, idx, tag.shape[0]) for idx in neg_samples]
+                assert set(neg_samples) < set(q_negative_ids)
+                q_negative_ids = neg_samples
             np.random.shuffle(q_negative_ids)
             q_negative_ids = q_negative_ids[:N_neg]  # consider only 20 negatives
             tuples += [[p_id] + q_negative_ids for p_id in q_positive_ids]
@@ -37,7 +49,11 @@ def create_eval_batches(ids_corpus, data, padding_id, N_neg=20):
     return lst
 
 
-def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20):
+def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20, samples_file=None):
+
+    samples_dict = None
+    if samples_file:
+        samples_dict = pickle.load(open(samples_file, 'rb'))
 
     # returns a list of batches where each batch is a list of (titles, bodies and some hidge_loss_batches ids to
     # indicate relations/cases happening in current titles and bodies...)
@@ -54,12 +70,11 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20
     titles = []
     bodies = []
     triples = []
-    batches = []
     tag_labels = []
+    tag_samples = []
 
     tuples = []
     cnt_q = 0
-    query_per_triple = []
 
     def transform(counter, x, length):
         return ((counter - 1) * length) + x
@@ -83,25 +98,32 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20
 
                 q_positive_ids = [transform(cnt_q, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 1]
                 q_negative_ids = [transform(cnt_q, idx, tag.shape[0]) for idx, label in enumerate(tag) if label == 0]
+                if samples_dict:
+                    neg_samples, neg_sampled_tags = samples_dict[int(id)]  # 100 tags
+                    neg_samples = list(neg_samples)
+                    neg_samples = [transform(cnt_q, idx, tag.shape[0]) for idx in neg_samples]
+                    assert set(neg_samples) < set(q_negative_ids), 'neg_samples: {}\nq_negative_ids: {}'.format(neg_samples, q_negative_ids)
+                    q_negative_ids = neg_samples
                 np.random.shuffle(q_negative_ids)
                 q_negative_ids = q_negative_ids[:N_neq]  # consider only 20 negatives
                 tuples += [[p_id] + q_negative_ids for p_id in q_positive_ids]
+                tag_samples.append(q_positive_ids+q_negative_ids)
+                tmp = q_positive_ids + q_negative_ids
 
         pid = pid2id[pid]
         pos = [pid2id[q] for q, l in zip(qids, qlabels) if l == 1 and q in pid2id]
         neg = [pid2id[q] for q, l in zip(qids, qlabels) if l == 0 and q in pid2id]
-        query_per_triple.append(
-            range(len(triples), len(triples)+len(pos))+[-1 for x in range(len(pos), 10)])  # because prune_pos_cnt = 10
 
         triples += [[pid, x]+neg for x in pos]
 
         if cnt == batch_size or u == N-1:
             titles, bodies, tag_labels = create_one_batch(titles, bodies, tag_labels, padding_id)
             triples = create_hinge_batch(triples)
-            query_per_triple = np.array(query_per_triple, np.int32)
             tuples = create_hinge_batch(tuples)
 
-            yield titles, bodies, triples, query_per_triple, tag_labels, tuples
+            tag_samples = create_hinge_batch(tag_samples)
+
+            yield titles, bodies, triples, tag_labels, tuples, tag_samples
 
             titles = []
             bodies = []
@@ -112,7 +134,7 @@ def create_batches(ids_corpus, data, batch_size, padding_id, perm=None, N_neq=20
 
             tuples = []
             cnt_q = 0
-            query_per_triple = []
+            tag_samples = []
 
 
 def create_one_batch(titles, bodies, tag_labels, padding_id):
