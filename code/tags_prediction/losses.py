@@ -69,8 +69,8 @@ def modified_hinge_loss(act_output, tuples, take_max=False):  # act_output which
 
 # if take_max = True, then is equal to loss0, if False, then is equal to loss2
 def dev_hinge_loss(act_output, tuples, take_max=False):  # act_output which lies in [-1,1]
-    print 'act output ', act_output
-    print 'tuples ', tuples
+    # print 'act output ', act_output
+    # print 'tuples ', tuples
     num_tuples = tuples.shape[0]
     act_output = np.reshape(act_output, [-1, 1])
     tuples = np.reshape(tuples, [-1])

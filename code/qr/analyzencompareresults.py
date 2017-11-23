@@ -44,6 +44,7 @@ argparser.add_argument("--results1", type=str, default="")
 argparser.add_argument("--results2", type=str, default="")
 argparser.add_argument("--save_ids", type=str, default="")
 argparser.add_argument("--read_ids", type=str, default="")
+argparser.add_argument("--mean_map", type=float, default=56.)
 argparser.add_argument("--name1", type=str, default="")
 argparser.add_argument("--name2", type=str, default="")
 argparser.add_argument("--fig", type=str, default="")
@@ -68,7 +69,7 @@ else:
     # bad queries are defined based on the results of model 1 (or given from a file)
     # based on whether P@1 was not found (only care if similar candidate was given) !!
     # bad_queries = [r[0] for r in R_1 if 1 in r[4] and r[7] < 100]
-    bad_queries = [r[0] for r in R_1 if r[5] <= 56 or (1 in r[4] and r[7] < 100)]
+    bad_queries = [r[0] for r in R_1 if r[5] <= args.mean_map or (1 in r[4] and r[7] < 100)]
     print '\nbad_queries: {}\n'.format(bad_queries)
 
     # best queries are defined based on the results of model 1 (or given from a file)

@@ -170,17 +170,18 @@ def main():
             # clf = OneVsRestClassifier(clf)
             # clf.fit(x_train, y_train)
 
-            from sklearn.ensemble import BaggingClassifier
-            n_estimators = 10
-            clf = OneVsRestClassifier(
-                BaggingClassifier(
-                    SVC(kernel='linear', probability=True, class_weight='auto', verbose=1),
-                    max_samples=1.0 / n_estimators,
-                    n_estimators=n_estimators,
-                    n_jobs=args.njobs,
-                    verbose=1
-                )
-            )
+            # from sklearn.ensemble import BaggingClassifier
+            # n_estimators = 10
+            # clf = OneVsRestClassifier(
+            #     BaggingClassifier(
+            #         SVC(kernel='linear', probability=True, class_weight='auto', verbose=1),
+            #         max_samples=1.0 / n_estimators,
+            #         n_estimators=n_estimators,
+            #         n_jobs=args.njobs,
+            #         verbose=1
+            #     )
+            # )
+            clf = OneVsRestClassifier(clf, n_jobs=1,)
             clf.fit(x_train, y_train)
 
         save_model(clf, args.model_file)
