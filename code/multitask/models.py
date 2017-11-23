@@ -203,6 +203,7 @@ class ModelQRTP(object):
             loss_qr = qrdev_entropy_loss(all_labels, all_scores)  # todo : encounters nan
         else:
             loss_qr = qrdevloss0(all_labels, all_scores)
+        loss_qr *= self.args.qr_weight
 
         outputs = np.vstack(outputs)
         targets = np.vstack(targets).astype(np.int32)  # it was dtype object
@@ -212,6 +213,7 @@ class ModelQRTP(object):
             loss_tp = tpdev_entropy_loss(self.args, targets, outputs)
         else:
             loss_tp = tpdev_hinge_loss(targets, outputs, tuples)
+        loss_tp *= self.args.tp_weight
 
         """------------------------------------------remove ill evaluation-------------------------------------------"""
         eval_samples = []
