@@ -67,7 +67,17 @@ class ModelQR(object):
 
             with tf.name_scope('loss'):
 
-                if 'entropy' not in self.args or self.args.entropy == 0:
+                if 'mlp_dim' in self.args and self.args.mlp_dim != 0:
+                    x_entropy_pos = tf.nn.sigmoid_cross_entropy_with_logits(
+                        labels=tf.ones_like(pos_scores),
+                        logits=pos_scores
+                    )
+                    x_entropy_neg = tf.nn.sigmoid_cross_entropy_with_logits(
+                        labels=tf.zeros_like(all_neg_scores),
+                        logits=all_neg_scores
+                    )
+                    self.loss = (tf.reduce_mean(x_entropy_pos)*1. + tf.reduce_mean(x_entropy_neg))*0.5
+                else:
                     if 'loss' in self.args and self.args.loss == 'loss1':
                         self.loss = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # OK
                         # self.loss1 = loss0(pos_scores, all_neg_scores)  # alternative 1
@@ -84,20 +94,6 @@ class ModelQR(object):
                         self.loss = loss0(pos_scores, all_neg_scores)  # OK
                         # self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
                         # self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
-                else:
-
-                    assert 'mlp_dim' in self.args and self.args.mlp_dim != 0, 'OPA'
-
-                    x_entropy_pos = tf.nn.sigmoid_cross_entropy_with_logits(
-                        labels=tf.ones_like(pos_scores),
-                        logits=pos_scores
-                    )
-                    x_entropy_neg = tf.nn.sigmoid_cross_entropy_with_logits(
-                        labels=tf.zeros_like(all_neg_scores),
-                        logits=all_neg_scores
-                    )
-
-                    self.loss = (tf.reduce_mean(x_entropy_pos)*1. + tf.reduce_mean(x_entropy_neg))*0.5
 
             with tf.name_scope('regularization'):
                 l2_reg = 0.
@@ -125,30 +121,32 @@ class ModelQR(object):
         q_vecs_n_vecs = tf.concat([q_vecs_n_vecs, n_vecs_p_vecs], axis=0)  # REV.
 
         with tf.name_scope('MLP'):
-            q_vec_p_vec = tf.nn.dropout(q_vec_p_vec, 1.-self.dropout_prob)
-            q_vecs_n_vecs = tf.nn.dropout(q_vecs_n_vecs, 1.-self.dropout_prob)
 
-            w_h1, b_h1 = init_w_b_vals(
-                [self.args.hidden_dim*2, self.args.mlp_dim], [self.args.mlp_dim], self.args.activation
-            )
-            weights_h1, biases_h1 = tf.Variable(w_h1, name='weights_h1'), tf.Variable(b_h1, name='bias_h1')
-            w_o, b_o = init_w_b_vals(
-                [self.args.mlp_dim, 1], [1], self.args.activation
-            )
-            weights_o, biases_o = tf.Variable(w_o, name='weights_o'), tf.Variable(b_o, name='bias_o')
+            def make_layer(in_dim, out_dim, name_w, name_b):
+                w_val, b_val = init_w_b_vals([in_dim, out_dim], [out_dim], self.args.activation)
+                w, b = tf.Variable(w_val, name=name_w), tf.Variable(b_val, name=name_b)
+                return w, b
 
-            h_layer_p = tf.add(tf.matmul(q_vec_p_vec, weights_h1), biases_h1)
-            h_layer_n = tf.add(tf.matmul(q_vecs_n_vecs, weights_h1), biases_h1)
-            act_h_layer_p = tf.nn.relu(h_layer_p)
-            act_h_layer_n = tf.nn.relu(h_layer_n)
+            def forward_layer(inp, w, b, with_activation=True):
+                inp = tf.nn.dropout(inp, 1.-self.dropout_prob)
+                outp = tf.add(tf.matmul(inp, w), b)
+                if with_activation:
+                    outp = tf.nn.relu(outp)
+                return outp
 
-            output_p = tf.matmul(act_h_layer_p, weights_o) + biases_o
-            output_n = tf.matmul(act_h_layer_n, weights_o) + biases_o
-            # act_output_p = tf.clip_by_value(tf.nn.sigmoid(output_p), 0., 1.)
-            # act_output_n = tf.clip_by_value(tf.nn.sigmoid(output_n), 0., 1.)
+            weights_h1, biases_h1 = make_layer(self.args.hidden_dim*2, self.args.mlp_dim, 'weights_h1', 'bias_h1')
+            act_h_layer_p = forward_layer(q_vec_p_vec, weights_h1, biases_h1, True)
+            act_h_layer_n = forward_layer(q_vecs_n_vecs, weights_h1, biases_h1, True)
 
-        # [num_tuples] , [num_tuples, candidate_size-1=20]
-        # return tf.squeeze(act_output_p), tf.reshape(act_output_n, (-1, 20))
+            if 'mlp_dim2' in self.args and self.args.mlp_dim2 != 0:
+                weights_h2, biases_h2 = make_layer(self.args.mlp_dim, self.args.mlp_dim2, 'weights_h2', 'bias_h2')
+                act_h_layer_p = forward_layer(act_h_layer_p, weights_h2, biases_h2, True)
+                act_h_layer_n = forward_layer(act_h_layer_n, weights_h2, biases_h2, True)
+
+            weights_o, biases_o = make_layer(self.args.mlp_dim, 1, 'weights_o', 'bias_o')
+            output_p = forward_layer(act_h_layer_p, weights_o, biases_o, False)
+            output_n = forward_layer(act_h_layer_n, weights_o, biases_o, False)
+
         return tf.squeeze(output_p), tf.reshape(output_n, (-1, 20))
 
     @staticmethod
@@ -205,25 +203,21 @@ class ModelQR(object):
         MRR = e.MRR()
         P1 = e.Precision(1)
         P5 = e.Precision(5)
-        if 'entropy' in self.args and self.args.entropy != 0:
+        if 'mlp_dim' in self.args and self.args.mlp_dim != 0:
             loss1 = dev_entropy_loss(all_labels, all_scores)
         else:
             loss1 = devloss1(all_labels, all_scores)
-        if 'loss' in self.args and 'sum' in self.args.loss:
-            loss0 = devloss0sum(all_labels, all_scores)
-            loss2 = devloss2sum(all_labels, all_scores)
-        else:
-            loss0 = devloss0(all_labels, all_scores)
-            loss2 = devloss2(all_labels, all_scores)
+        loss0 = devloss0(all_labels, all_scores)
+        loss2 = devloss2(all_labels, all_scores)
         return MAP, MRR, P1, P5, loss0, loss1, loss2
 
     def train_batch(self, titles, bodies, pairs, query_per_pair, train_op, global_step, sess):
         target_scores = np.zeros((len(pairs), 21))
         target_scores[:, 0] = 1.
-        _, _step, _loss, _cost, pos, neg = sess.run(
+        _, _step, _loss, _cost = sess.run(
             [
                 train_op, global_step, self.loss, self.cost,
-                self.pos_scores, self.all_neg_scores
+                # self.pos_scores, self.all_neg_scores
             ],
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
@@ -234,7 +228,7 @@ class ModelQR(object):
                 self.target_scores: target_scores
             }
         )
-        print 'pos neg ', np.max(pos), np.min(pos), np.max(neg), np.min(neg)
+        # print 'pos neg ', np.max(pos), np.min(pos), np.max(neg), np.min(neg)
         return _step, _loss, _cost, None, None, None, None, None, None
 
     def train_model(self, ids_corpus, train, dev=None, test=None):

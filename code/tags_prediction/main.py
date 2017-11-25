@@ -100,7 +100,7 @@ if __name__ == '__main__':
     argparser.add_argument("--activation", "-act", type=str, default="tanh")
     argparser.add_argument("--dropout", type=float, default=0.0)
     argparser.add_argument("--max_epoch", type=int, default=50)
-    argparser.add_argument("--reweight", type=int, default=1)
+    argparser.add_argument("--reweight", type=int, default=0)
     argparser.add_argument("--normalize", type=int, default=1)
     # average 1 = mean pooling for any layer
     # average 0 = last pooling for RNNs max pooling for CNN

@@ -30,7 +30,6 @@ class QRTPAPI:
             from models import LstmQRTP as Model
         elif layer.lower() in ["bilstm", "bigru"]:
             from models import BiRNNQRTP as Model
-            raise Exception()
         elif layer.lower() == "cnn":
             from models import CnnQRTP as Model
         elif layer.lower() == "gru":
@@ -60,19 +59,35 @@ class QRTPAPI:
     def evaluate(self, data, session):
 
         res = []
-
+        all_ranked_labels = []
+        all_ranked_ids = []
+        all_ranked_scores = []
+        query_ids = []
+        all_MAP, all_MRR, all_Pat1, all_Pat5 = [], [], [], []
         outputs, targets = [], []
 
         for idts, idbs, id_labels, tags_b, tuples_b, pid, qids in data:
             cur_scores, cur_out = self.score_func(idts, idbs, session)
 
-            outputs.append(cur_out)
-            targets.append(tags_b)
-
             assert len(id_labels) == len(cur_scores)
             ranks = (-cur_scores).argsort()
             ranked_labels = id_labels[ranks]
             res.append(ranked_labels)
+
+            ranked_scores = np.array(cur_scores)[ranks]
+            ranked_ids = np.array(qids)[ranks]
+            query_ids.append(pid)
+            all_ranked_labels.append(ranked_labels)
+            all_ranked_ids.append(ranked_ids)
+            all_ranked_scores.append(ranked_scores)
+            this_ev = QAEvaluation([ranked_labels])
+            all_MAP.append(this_ev.MAP())
+            all_MRR.append(this_ev.MRR())
+            all_Pat1.append(this_ev.Precision(1))
+            all_Pat5.append(this_ev.Precision(5))
+
+            outputs.append(cur_out)
+            targets.append(tags_b)
 
         e = QAEvaluation(res)
         print '\nMAP: {} MRR: {} P@1: {} P@5: {}\n'.format(e.MAP(), e.MRR(), e.Precision(1), e.Precision(5))
@@ -94,6 +109,7 @@ class QRTPAPI:
             ev.Precision(5), ev.Precision(10), ev.Recall(5), ev.Recall(10), ev.upper_bound(5), ev.upper_bound(10),
             ev.MeanAveragePrecision()
         )
+        return all_MAP, all_MRR, all_Pat1, all_Pat5, all_ranked_labels, all_ranked_ids, query_ids, all_ranked_scores
 
     def write_results(self, data, session, filename):
         # return for each query: q_id, candidate_id, candidate_rank, candidate_score
@@ -152,6 +168,7 @@ if __name__ == '__main__':
     argparser.add_argument("--model", type=str)
     argparser.add_argument("--mlp_dim_tp", type=int, default=50)
     argparser.add_argument("--layer", type=str, default="lstm")
+    argparser.add_argument("--full_results_file", type=str, default="")  # to write in
     argparser.add_argument("--results_file", type=str, default="")  # to write in
     args = argparser.parse_args()
     print '\n', args, '\n'
@@ -171,7 +188,26 @@ if __name__ == '__main__':
 
         test = qaio.read_annotations(args.test_file, K_neg=-1, prune_pos_cnt=-1)
         test = create_eval_batches(ids_corpus_tags, test, padding_id)
-        myqrapi.evaluate(test, sess)
+        testmap, testmrr, testpat1, testpat5, rank_labels, rank_ids, qids, rank_scores = myqrapi.evaluate(test, sess)
+
+        if args.full_results_file:
+            with open(args.full_results_file, 'w') as f:
+                for i, (idts, idbs, labels, tags_b, tuples_b, pid, qids) in enumerate(test):
+                    print_qids_similar = [x for x, l in zip(qids, labels) if l == 1]
+                    print_qids_similar = " ".join([str(x) for x in print_qids_similar])
+
+                    print_qids_candidates = " ".join([str(x) for x in rank_ids[i]])
+
+                    print_ranked_scores = " ".join([str(x) for x in rank_scores[i]])
+
+                    print_ranked_labels = " ".join([str(x) for x in rank_labels[i]])
+
+                    f.write("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\n".format(
+                        pid, print_qids_similar, print_qids_candidates,
+                        print_ranked_scores,
+                        print_ranked_labels,
+                        testmap[i], testmrr[i], testpat1[i], testpat5[i]
+                    ))
 
         if args.results_file:
             myqrapi.write_results(test, sess, args.results_file)

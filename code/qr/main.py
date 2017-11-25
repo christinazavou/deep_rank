@@ -98,7 +98,7 @@ if __name__ == "__main__":
     # average 2 = max pooling for RNNs
     argparser.add_argument("--average", type=int, default=0)
     argparser.add_argument("--batch_size", type=int, default=40)
-    argparser.add_argument("--performance", type=str, default='MRR')  # 'MRR' or 'MAP'
+    argparser.add_argument("--performance", type=str, default='MAP')  # 'MRR' or 'MAP'
     # argparser.add_argument("--learning", type=str, default="adam")
     argparser.add_argument("--learning_rate", type=float, default=0.001)
     argparser.add_argument("--l2_reg", type=float, default=1e-5)
@@ -108,13 +108,13 @@ if __name__ == "__main__":
     argparser.add_argument("--max_epoch", type=int, default=50)
     argparser.add_argument("--patience", type=int, default=8)
     argparser.add_argument("--normalize", type=int, default=1)
-    argparser.add_argument("--reweight", type=int, default=1)
+    argparser.add_argument("--reweight", type=int, default=0)
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
     argparser.add_argument("--loss", type=str, default="loss0")
-    argparser.add_argument("--entropy", type=int, default=0)
     argparser.add_argument("--weight", type=float, default=1.)
     argparser.add_argument("--mlp_dim", type=int, default=0)
+    argparser.add_argument("--mlp_dim2", type=int, default=0)
 
     timestamp = str(int(time.time()))
     this_dir = os.path.dirname(os.path.realpath(__file__))

@@ -46,31 +46,81 @@ class ModelQRTP(object):
             # triples_len x 22 x hidden_dim
             pairs_vecs = tf.nn.embedding_lookup(self.h_final, self.pairs_ids_placeholder, name='pairs_vecs')
             query_vecs = pairs_vecs[:, 0, :]
-            pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
-            all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
+
+            if 'mlp_dim' in self.args and self.args.mlp_dim != 0:
+                pos_scores, all_neg_scores = self.mlp(query_vecs, pairs_vecs[:, 1, :], pairs_vecs[:, 2:, :])
+            else:
+                # [num_of_tuples]
+                pos_scores = tf.reduce_sum(query_vecs * pairs_vecs[:, 1, :], axis=1)
+                # [num_of_tuples, candidate size - 1]
+                all_neg_scores = tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 2:, :], axis=2)
 
         with tf.name_scope('QaLoss'):
 
-            if 'entropy_qr' not in self.args or self.args.entropy_qr == 0:
+            if 'mlp_dim_qr' in self.args and self.args.mlp_dim_qr != 0:
+                x_entropy_pos = tf.nn.sigmoid_cross_entropy_with_logits(
+                    labels=tf.ones_like(pos_scores),
+                    logits=pos_scores
+                )
+                x_entropy_neg = tf.nn.sigmoid_cross_entropy_with_logits(
+                    labels=tf.zeros_like(all_neg_scores),
+                    logits=all_neg_scores
+                )
+                self.loss_qr = (tf.reduce_mean(x_entropy_pos) * 1. + tf.reduce_mean(x_entropy_neg)) * 0.5
+            else:
                 if 'loss_qr' in self.args and self.args.loss_qr == 'loss2':
                     self.loss_qr = qrloss2(pos_scores, all_neg_scores)
                 else:
                     self.loss_qr = qrloss0(pos_scores, all_neg_scores)
-            else:
-                x_entropy = tf.nn.sigmoid_cross_entropy_with_logits(
-                    labels=self.target_scores,
-                    logits=tf.reduce_sum(tf.expand_dims(query_vecs, axis=1) * pairs_vecs[:, 1:, :], axis=2)
-                )
-                self.loss_qr = tf.reduce_mean(tf.reduce_sum(x_entropy, axis=1), name='x_entropy')
+
+    # [tuples_num, hidden_dim],[tuples_num, hidden_dim], [tuples_num, 20, hidden_dim]
+    def mlp(self, queries_vec, positives_vec, negatives_vec):
+
+        # [tuples_num, 20, hidden_dim]
+        q_exp = tf.tile(tf.reshape(queries_vec, (-1, 1, self.args.hidden_dim)), (1, 20, 1))
+
+        # [tuples_num, hidden_dim*2]
+        q_vec_p_vec = tf.reshape(tf.stack([queries_vec, positives_vec], axis=1), (-1, 2*self.args.hidden_dim))
+        p_vec_q_vec = tf.reshape(tf.stack([positives_vec, queries_vec], axis=1), (-1, 2*self.args.hidden_dim))  # REV.
+        q_vec_p_vec = tf.concat([q_vec_p_vec, p_vec_q_vec], axis=0)  # REV.
+
+        # [tuples_num*20, hidden_dim*2]
+        q_vecs_n_vecs = tf.reshape(tf.concat([q_exp, negatives_vec], axis=2), (-1, 2*self.args.hidden_dim))
+        n_vecs_p_vecs = tf.reshape(tf.concat([negatives_vec, q_exp], axis=2), (-1, 2*self.args.hidden_dim))  # REV.
+        q_vecs_n_vecs = tf.concat([q_vecs_n_vecs, n_vecs_p_vecs], axis=0)  # REV.
+
+        with tf.name_scope('MLP_QR'):
+
+            def make_layer(in_dim, out_dim, name_w, name_b):
+                w_val, b_val = init_w_b_vals([in_dim, out_dim], [out_dim], self.args.activation)
+                w, b = tf.Variable(w_val, name=name_w), tf.Variable(b_val, name=name_b)
+                return w, b
+
+            def forward_layer(inp, w, b, with_activation=True):
+                inp = tf.nn.dropout(inp, 1.-self.dropout_prob)
+                outp = tf.add(tf.matmul(inp, w), b)
+                if with_activation:
+                    outp = tf.nn.relu(outp)
+                return outp
+
+            weights_h1, biases_h1 = make_layer(self.args.hidden_dim*2, self.args.mlp_dim, 'weights_h1', 'bias_h1')
+            act_h_layer_p = forward_layer(q_vec_p_vec, weights_h1, biases_h1, True)
+            act_h_layer_n = forward_layer(q_vecs_n_vecs, weights_h1, biases_h1, True)
+
+            weights_o, biases_o = make_layer(self.args.mlp_dim, 1, 'weights_o', 'bias_o')
+            output_p = forward_layer(act_h_layer_p, weights_o, biases_o, False)
+            output_n = forward_layer(act_h_layer_n, weights_o, biases_o, False)
+
+        return tf.squeeze(output_p), tf.reshape(output_n, (-1, 20))
 
     def _initialize_output_graph_tp(self):
 
         with tf.name_scope('outputs'):
 
             if self.args.mlp_dim_tp != 0:
-                scope_name = 'MLP'
+                scope_name = 'MLP_TP'
             else:
-                scope_name = 'SLP'
+                scope_name = 'SLP_TP'
 
             with tf.name_scope(scope_name):
 

@@ -14,16 +14,7 @@ plt.rcParams.update(params)
 
 
 def plot_test_eval(results_list, name, results_list2=None):
-    if name == 'P@5':
-        idx = 3
-    elif name == 'P@10':
-        idx = 4
-    elif name == 'R@5':
-        idx = 5
-    elif name == 'R@10':
-        idx = 6
-    else:
-        idx = 9
+    idx = 9  # MAP
     values = [r[idx] for r in results_list]
     if results_list2:
         values2 = [r[idx] for r in results_list2]
@@ -63,15 +54,11 @@ q_idx = questions_index_with_tags(Q, True)
 # 0:query_id, 1:real_tags, 2:rankedat10_tags, 3:Pat5, 4:Pat10, 5:Rat5, 6:Rat10, 7:UpperBound5, 8:UpperBound10, 9: MAP
 R_1 = list(read_tp_results_rows(args.results1))
 
-plot_test_eval(R_1, 'P@5')
-plot_test_eval(R_1, 'R@5')
 plot_test_eval(R_1, 'MAP')
 
 if args.results2:
     R_2 = list(read_tp_results_rows(args.results2))
 
-    plot_test_eval(R_1, 'P@5', results_list2=R_2)
-    plot_test_eval(R_1, 'R@5', results_list2=R_2)
     plot_test_eval(R_1, 'MAP', results_list2=R_2)
 
 if args.read_ids:
@@ -80,13 +67,13 @@ else:
     """ bad queries are defined based on the results of model 1 (or given from a file)
     based on whether R@10 was < 50%
     no need to test if r[1] != [''] since they are not considered in evaluation (& thus in results)"""
-    bad_queries = [r[0] for r in R_1 if r[6] < 60 or r[9] < 30]  # ---------CAN CHANGE THIS VALUE----------
+    bad_queries = [r[0] for r in R_1 if r[6] < 85 or r[9] < 65]
     # print '\nbad_queries: {}\n'.format(bad_queries)
 
     """ best queries are defined based on the results of model 1 (or given from a file)
     based on whether all true positives where found up to rank 5 (use of upper bound)
     no need to test if r[1] != [''] since they are not considered in evaluation (& thus in results)"""
-    best_queries = [r[0] for r in R_1 if r[9] > 70]
+    best_queries = [r[0] for r in R_1 if r[9] > 75]
     # print '\nbest_queries: {}\n'.format(best_queries)
     ids = {'bad_queries': bad_queries, 'best_queries': best_queries}
     if args.save_ids:
@@ -95,77 +82,39 @@ else:
 print ids
 
 if args.results2:
-    MAPbest_model1 = [r[9] for r in R_1 if r[0] in ids['best_queries']]
-    MAPbest_model2 = [r[9] for r in R_2 if r[0] in ids['best_queries']]
 
-    MAPbad_model1 = [r[9] for r in R_1 if r[0] in ids['bad_queries']]
-    MAPbad_model2 = [r[9] for r in R_2 if r[0] in ids['bad_queries']]
-    # plot differences (one positive difference means model 1 wins in one query)
+    MAP_model1 = [r[9] for r in R_1 if r[0] in ids['best_queries']]
+    MAP_model2 = [r[9] for r in R_2 if r[0] in ids['best_queries']]
 
-    differences = np.array(MAPbest_model1) - np.array(MAPbest_model2)
+    differences = np.array(MAP_model1) - np.array(MAP_model2) + 1
     # print differences
     print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
     plt.figure()
     plt.bar(range(len(differences)), sorted(differences, reverse=True))
-    # plt.plot(differences, '.')
+    # plt.plot(range(len(differences)), sorted(differences, reverse=True), 'o')
     frame = plt.gca()
     frame.axes.get_xaxis().set_visible(False)
-    plt.title('MAP {} - {}'.format(args.name1, args.name2))
+    plt.title('MAP {}-{}'.format(args.name1, args.name2))
     plt.ylim([-100, 100])
-    if args.fig:
-        plt.savefig(args.fig.replace('.png', 'rat10diff.png'))
-    else:
+    if not args.fig:
         plt.show()
-
-    differences = np.array(MAPbad_model1) - np.array(MAPbad_model2)
-    # print differences
-    print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
-    plt.figure()
-    # plt.plot(differences, '.')
-    plt.bar(range(len(differences)), sorted(differences, reverse=True))
-    frame = plt.gca()
-    frame.axes.get_xaxis().set_visible(False)
-    plt.title('MAP {} - {}'.format(args.name1, args.name2))
-    plt.ylim([-100, 100])
-    if args.fig:
-        plt.savefig(args.fig.replace('.png', 'rat5diff.png'))
     else:
-        plt.show()
+        plt.savefig(args.fig.replace('.png', 'mapdiff.png'))
 
-    Rat5best_model1 = [r[6] for r in R_1 if r[0] in ids['best_queries']]
-    Rat5best_model2 = [r[6] for r in R_2 if r[0] in ids['best_queries']]
+    MAP_model1 = [r[9] for r in R_1 if r[0] in ids['bad_queries']]
+    MAP_model2 = [r[9] for r in R_2 if r[0] in ids['bad_queries']]
 
-    Rat5bad_model1 = [r[6] for r in R_1 if r[0] in ids['bad_queries']]
-    Rat5bad_model2 = [r[6] for r in R_2 if r[0] in ids['bad_queries']]
-    # plot differences (one positive difference means model 1 wins in one query)
-
-    differences = np.array(Rat5best_model1) - np.array(Rat5best_model2)
+    differences = np.array(MAP_model1) - np.array(MAP_model2) + 1
     # print differences
     print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
     plt.figure()
     plt.bar(range(len(differences)), sorted(differences, reverse=True))
-    # plt.plot(differences, '.')
+    # plt.plot(range(len(differences)), sorted(differences, reverse=True), 'o')
     frame = plt.gca()
     frame.axes.get_xaxis().set_visible(False)
-    plt.title('R@5 {} - {}'.format(args.name1, args.name2))
+    plt.title('MAP {}-{}'.format(args.name1, args.name2))
     plt.ylim([-100, 100])
-    if args.fig:
-        plt.savefig(args.fig.replace('.png', 'rat10diff.png'))
-    else:
+    if not args.fig:
         plt.show()
-
-    differences = np.array(Rat5bad_model1) - np.array(Rat5bad_model2)
-    # print differences
-    print 'zero differences out of {}: {}\n'.format(len(differences), sum(differences == 0).astype(np.float32))
-    plt.figure()
-    # plt.plot(differences, '.')
-    plt.bar(range(len(differences)), sorted(differences, reverse=True))
-    frame = plt.gca()
-    frame.axes.get_xaxis().set_visible(False)
-    plt.title('R@5 {} - {}'.format(args.name1, args.name2))
-    plt.ylim([-100, 100])
-    if args.fig:
-        plt.savefig(args.fig.replace('.png', 'rat5diff.png'))
     else:
-        plt.show()
-
+        plt.savefig(args.fig.replace('.png', 'mapdiff.png'))

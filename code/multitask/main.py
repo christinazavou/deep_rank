@@ -101,14 +101,14 @@ if __name__ == "__main__":
     argparser.add_argument("--dropout", type=float, default=0.0)
     argparser.add_argument("--max_epoch", type=int, default=50)
     argparser.add_argument("--normalize", type=int, default=1)
-    argparser.add_argument("--reweight", type=int, default=1)
+    argparser.add_argument("--reweight", type=int, default=0)
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
 
     argparser.add_argument("--mlp_dim_tp", type=int, default=0)
+    argparser.add_argument("--mlp_dim_qr", type=int, default=0)
 
     argparser.add_argument("--loss_qr", type=str, default="loss0")
-    argparser.add_argument("--entropy_qr", type=int, default=0)
     argparser.add_argument("--loss_tp", type=str, default="loss2")
     argparser.add_argument("--entropy_tp", type=int, default=1)
 
