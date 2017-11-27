@@ -128,22 +128,25 @@ class ModelQRTP(object):
                     w_h1, b_h1 = init_w_b_vals(
                         [self.args.hidden_dim, self.args.mlp_dim_tp], [self.args.mlp_dim_tp], self.args.activation)
                     weights_h1, biases_h1 = tf.Variable(w_h1, name='weights_h1'), tf.Variable(b_h1, name='bias_h1')
-                    layer_1 = tf.add(tf.matmul(self.h_final, weights_h1), biases_h1)
-
-                    # without activation is equivalent to SLP i.e. non linear
-                    # act_layer_1 = get_activation_by_name(self.args.activation)(layer_1)
+                    if self.args.depth > 1:
+                        assert self.args.layer in ['lstm', 'gru']
+                        layer_1 = tf.add(tf.matmul(self.mid_final, weights_h1), biases_h1)
+                    else:
+                        layer_1 = tf.add(tf.matmul(self.h_final, weights_h1), biases_h1)
                     act_layer_1 = tf.nn.relu(layer_1)  # to reduce training time
 
                     w_o, b_o = init_w_b_vals([self.args.mlp_dim_tp, self.output_dim], [self.output_dim], self.args.activation)
                     weights_o, biases_o = tf.Variable(w_o, name='weights_o'), tf.Variable(b_o, name='bias_o')
-
                     output = tf.matmul(act_layer_1, weights_o) + biases_o
 
                 else:
                     w_o, b_o = init_w_b_vals([self.args.hidden_dim, self.output_dim], [self.output_dim], self.args.activation)
                     weights_o, biases_o = tf.Variable(w_o, name='weights_o'), tf.Variable(b_o, name='bias_o')
-
-                    output = tf.matmul(self.h_final, weights_o) + biases_o
+                    if self.args.depth > 1:
+                        assert self.args.layer in ['lstm', 'gru']
+                        output = tf.matmul(self.mid_final, weights_o) + biases_o
+                    else:
+                        output = tf.matmul(self.h_final, weights_o) + biases_o
 
                 self.b_o = biases_o  # for api compatibility
 
@@ -573,7 +576,7 @@ class ModelQRTP(object):
 
     def save(self, sess, path, step):
         # NOTE: Optimizer is not saved!!! So if more train..optimizer starts again
-        path = "{}_{}".format(path, ".pkl.gz")
+        path = "{}_{}".format(path, step, ".pkl.gz")
         print("Saving model checkpoint to {}\n".format(path))
         params_values = {}
         for param_name, param in self.params.iteritems():
@@ -711,16 +714,27 @@ class LstmQRTP(ModelQRTP):
                 dtype=tf.float32,
                 sequence_length=self.SLT
             )
-
-            if self.args.normalize:
-                self.t_states_series = self.normalize_3d(self.t_states_series)
-
-            if self.args.average == 1:
-                self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
-            elif self.args.average == 0:
-                self.t_state = self.t_current_state[0][1]
+            # current_state = last state of every layer in the network as an LSTMStateTuple
+            # i.e. [batch_size, max_time, cell.output_size]
+            if self.args.depth > 1:
+                assert self.args.depth == 2
+                print 'depth > 1 => will use last pooling'
+                self.mid_t_state = self.t_current_state[0][1]
+                self.t_state = self.t_current_state[1][1]
             else:
-                self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
+                if self.args.normalize:
+                    self.t_states_series = self.normalize_3d(self.t_states_series)
+
+                if self.args.average == 1:
+                    self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
+                elif self.args.average == 0:
+                    # self.t_state=self.t_states_series[:, -1, :]=self.t_current_state[-1][1]=self.t_current_state[0][1]
+                    # in case sequence_length parameter is used in RNN, the last state is not self.t_states_series[:,-1,:]
+                    # but is self.t_states_series[:, self.SLT[x], :] and it is stored correctly in
+                    # self.t_current_state[0][1] so its better and safer to use this.
+                    self.t_state = self.t_current_state[0][1]
+                else:
+                    self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
 
         with tf.name_scope('bodies_output'):
 
@@ -731,18 +745,29 @@ class LstmQRTP(ModelQRTP):
                 sequence_length=self.SLB
             )
 
-            if self.args.normalize:
-                self.b_states_series = self.normalize_3d(self.b_states_series)
-
-            if self.args.average == 1:
-                self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
-            elif self.args.average == 0:
-                self.b_state = self.b_current_state[0][1]
+            if self.args.depth > 1:
+                assert self.args.depth == 2
+                print 'depth > 1 => will use last pooling'
+                self.mid_b_state = self.b_current_state[0][1]
+                self.b_state = self.b_current_state[1][1]
             else:
-                self.b_state = self.maximum_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
+
+                if self.args.normalize:
+                    self.b_states_series = self.normalize_3d(self.b_states_series)
+
+                if self.args.average == 1:
+                    self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
+                elif self.args.average == 0:
+                    self.b_state = self.b_current_state[0][1]
+                else:
+                    self.b_state = self.maximum_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
 
         with tf.name_scope('outputs'):
             with tf.name_scope('encodings'):
+                if self.args.depth > 1:
+                    mid_final = (self.mid_t_state + self.mid_b_state) * 0.5
+                    mid_final = tf.nn.dropout(mid_final, 1. - self.dropout_prob)
+                    self.mid_final = self.normalize_2d(mid_final)
                 # batch * d
                 h_final = (self.t_state + self.b_state) * 0.5
                 h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
@@ -1134,16 +1159,22 @@ class GruQRTP(ModelQRTP):
                 dtype=tf.float32,
                 sequence_length=self.SLT
             )
-
-            if self.args.normalize:
-                self.t_states_series = self.normalize_3d(self.t_states_series)
-
-            if self.args.average == 1:
-                self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
-            elif self.args.average == 0:
-                self.t_state = self.t_current_state[0]
+            if self.args.depth > 1:
+                assert self.args.depth == 2
+                print 'depth > 1 => will use last pooling'
+                self.mid_t_state = self.t_current_state[0]
+                self.t_state = self.t_current_state[1]
             else:
-                self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
+
+                if self.args.normalize:
+                    self.t_states_series = self.normalize_3d(self.t_states_series)
+
+                if self.args.average == 1:
+                    self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
+                elif self.args.average == 0:
+                    self.t_state = self.t_current_state[0]
+                else:
+                    self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
 
         with tf.name_scope('bodies_output'):
             self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
@@ -1152,18 +1183,28 @@ class GruQRTP(ModelQRTP):
                 dtype=tf.float32,
                 sequence_length=self.SLB
             )
-
-            if self.args.normalize:
-                self.b_states_series = self.normalize_3d(self.b_states_series)
-
-            if self.args.average == 1:
-                self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
-            elif self.args.average == 0:
-                self.b_state = self.b_current_state[0]
+            if self.args.depth > 1:
+                assert self.args.depth == 2
+                print 'depth > 1 => will use last pooling'
+                self.mid_b_state = self.b_current_state[0]
+                self.b_state = self.b_current_state[1]
             else:
-                self.b_state = self.maximum_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
+
+                if self.args.normalize:
+                    self.b_states_series = self.normalize_3d(self.b_states_series)
+
+                if self.args.average == 1:
+                    self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
+                elif self.args.average == 0:
+                    self.b_state = self.b_current_state[0]
+                else:
+                    self.b_state = self.maximum_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
 
         with tf.name_scope('outputs'):
+            if self.args.depth > 1:
+                mid_final = (self.mid_t_state + self.mid_b_state) * 0.5
+                mid_final = tf.nn.dropout(mid_final, 1. - self.dropout_prob)
+                self.mid_final = self.normalize_2d(mid_final)
             # batch * d
             h_final = (self.t_state + self.b_state) * 0.5
             h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
