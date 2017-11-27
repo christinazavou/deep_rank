@@ -66,7 +66,8 @@ class ModelQRTP(object):
                     labels=tf.zeros_like(all_neg_scores),
                     logits=all_neg_scores
                 )
-                self.loss_qr = (tf.reduce_mean(x_entropy_pos) * 1. + tf.reduce_mean(x_entropy_neg)) * 0.5
+                pos_weight = 1.  # allows one to trade off recall and precision
+                self.loss = (tf.reduce_mean(x_entropy_pos) * pos_weight + tf.reduce_mean(x_entropy_neg)) * 0.5
             else:
                 if 'loss_qr' in self.args and self.args.loss_qr == 'loss2':
                     self.loss_qr = qrloss2(pos_scores, all_neg_scores)
@@ -80,14 +81,16 @@ class ModelQRTP(object):
         q_exp = tf.tile(tf.reshape(queries_vec, (-1, 1, self.args.hidden_dim)), (1, 20, 1))
 
         # [tuples_num, hidden_dim*2]
-        q_vec_p_vec = tf.reshape(tf.stack([queries_vec, positives_vec], axis=1), (-1, 2*self.args.hidden_dim))
-        p_vec_q_vec = tf.reshape(tf.stack([positives_vec, queries_vec], axis=1), (-1, 2*self.args.hidden_dim))  # REV.
-        q_vec_p_vec = tf.concat([q_vec_p_vec, p_vec_q_vec], axis=0)  # REV.
+        if np.random.random() < 0.5:
+            q_vec_p_vec = tf.reshape(tf.stack([queries_vec, positives_vec], axis=1), (-1, 2*self.args.hidden_dim))
+        else:
+            q_vec_p_vec = tf.reshape(tf.stack([positives_vec, queries_vec], axis=1), (-1, 2*self.args.hidden_dim))  # REV.
 
         # [tuples_num*20, hidden_dim*2]
-        q_vecs_n_vecs = tf.reshape(tf.concat([q_exp, negatives_vec], axis=2), (-1, 2*self.args.hidden_dim))
-        n_vecs_p_vecs = tf.reshape(tf.concat([negatives_vec, q_exp], axis=2), (-1, 2*self.args.hidden_dim))  # REV.
-        q_vecs_n_vecs = tf.concat([q_vecs_n_vecs, n_vecs_p_vecs], axis=0)  # REV.
+        if np.random.random() < 0.5:
+            q_vecs_n_vecs = tf.reshape(tf.concat([q_exp, negatives_vec], axis=2), (-1, 2*self.args.hidden_dim))
+        else:
+            q_vecs_n_vecs = tf.reshape(tf.concat([negatives_vec, q_exp], axis=2), (-1, 2*self.args.hidden_dim))  # REV.
 
         with tf.name_scope('MLP_QR'):
 
