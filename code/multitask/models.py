@@ -67,7 +67,7 @@ class ModelQRTP(object):
                     logits=all_neg_scores
                 )
                 pos_weight = 1.  # allows one to trade off recall and precision
-                self.loss = (tf.reduce_mean(x_entropy_pos) * pos_weight + tf.reduce_mean(x_entropy_neg)) * 0.5
+                self.loss_qr = (tf.reduce_mean(x_entropy_pos) * pos_weight + tf.reduce_mean(x_entropy_neg)) * 0.5
             else:
                 if 'loss_qr' in self.args and self.args.loss_qr == 'loss2':
                     self.loss_qr = qrloss2(pos_scores, all_neg_scores)
