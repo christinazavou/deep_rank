@@ -62,6 +62,19 @@ def evaluate(test_x, test_y, model):
         ev.MeanAveragePrecision()
     )
 
+    """------------------------------------------remove ill evaluation-------------------------------------------"""
+    print 'outputs before ', y_scores.shape
+    eval_labels = []
+    for label in range(test_y.shape[1]):
+        if (test_y[:, label] == np.ones(test_y.shape[0])).any():
+            eval_labels.append(label)
+    print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), test_y.shape[1])
+    y_scores, predictions, targets = y_scores[:, eval_labels], predictions[:, eval_labels], test_y[:, eval_labels]
+    print 'outputs after ', y_scores.shape
+    ev = Evaluation(y_scores, predictions, targets)
+    print 'precision recall f1 macro: {}'.format(ev.precision_recall_fscore('macro'))
+    print 'precision recall f1 micro: {}'.format(ev.precision_recall_fscore('micro'))
+
 
 def write_sampled_negatives(df_path, tf_idf_vec, model, labels, pfile, N_neg=100):
     df = read_df(df_path)
@@ -131,9 +144,10 @@ def main():
     else:
 
         print 'Building the model...'
+        exit()
 
         if args.method == 'logreg':
-            clf = LogisticRegression(solver='sag', verbose=10)
+            clf = LogisticRegression(solver='sag', verbose=10, class_weight='balanced', n_jobs=3)
         elif args.method == 'naivebayes':
             clf = MultinomialNB()
         elif args.method == 'linearsvm':

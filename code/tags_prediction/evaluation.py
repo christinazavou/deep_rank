@@ -93,9 +93,11 @@ class Evaluation(object):
         return mat
 
 
-def print_matrix(mat, tag_names, title=None, out_folder=None, xlabel=None, ylabel=None):
+def print_matrix(mat, tag_names, title=None, out_folder=None, xlabel=None, ylabel=None, some_labels=None):
     # df = pd.DataFrame(mat[:25, :25], index=tag_names[:25], columns=tag_names[:25])
     df = pd.DataFrame(mat, index=tag_names, columns=tag_names)
+    if some_labels is not None:
+        df = df.loc[some_labels][some_labels]
     plt.figure(figsize=(20, 10))
     plt.pcolor(df)
     plt.colorbar()

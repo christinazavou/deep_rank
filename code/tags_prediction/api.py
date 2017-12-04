@@ -12,6 +12,9 @@ import os
 import random
 
 
+TOP50LABELS = [u'12.04',u'installation', u'boot', u'unity', u'14.04', u'wireless', u'networking', u'command-line', u'dual-boot', u'11.10', u'drivers', u'server', u'12.10', u'grub2', u'13.04', u'13.10', u'gnome', u'apt', u'partitioning', u'nvidia', u'upgrade', u'sound',u'11.04',u'usb', u'system-installation', u'windows', u'kernel', u'updates', u'ati', u'bash', u'mount', u'graphics', u'software-recommendation', u'10.04', u'xubuntu', u'permissions', u'10.10', u'nautilus', u'virtualbox', u'keyboard', u'windows-7', u'xorg', u'software-installation', u'lubuntu',u'wine', u'firefox', u'hard-drive', u'shortcut-keys', u'software-center', u'ssh']
+
+
 class TPAPI:
 
     def __init__(self, model_path, emb_layer, session, output_dim, layer='lstm'):
@@ -76,6 +79,7 @@ class TPAPI:
         all_rankedat10_tags = []
         query_ids = []
 
+        # EVAL_LABELS = set()
         for sample_id, sample_output in zip(eval_samples, outputs):
             q_id = all_ids[sample_id]
             query_ids.append(q_id)
@@ -85,8 +89,10 @@ class TPAPI:
                 # label_id = eval_labels[col]
                 # label_name = tag_names[label_id]
                 label_name = tag_names[col]
+                # EVAL_LABELS.add(label_name)
                 rankedat10_tags.append(label_name)
             all_rankedat10_tags.append(rankedat10_tags)
+        # eval_labels = list(EVAL_LABELS & set(TOP50LABELS))
 
         all_Pat5, all_Pat10, all_Rat5, all_Rat10 = \
             ev.Precision(5, True), ev.Precision(10, True), ev.Recall(5, True), ev.Recall(10, True)
@@ -98,18 +104,38 @@ class TPAPI:
         # mat = ev.ConfusionMatrix(5)
         # print_matrix(
         #     mat,
-        #     [name for t, name in enumerate(tag_names) if t in eval_labels],
+        #     tag_names,
         #     'Confusion:True Tag on x-axis, False Tag on y-axis',
-        #     folder)
+        #     folder,
+        #     some_labels=eval_labels,
+        # )
         # mat = ev.CorrelationMatrix()
-        # print_matrix(mat,
-        #              [name for t, name in enumerate(tag_names) if t in eval_labels],
-        #              'Correlation: True Tag on both axis', folder)
-
+        # print_matrix(
+        #     mat,
+        #     tag_names,
+        #     'Correlation: True Tag on both axis',
+        #     folder,
+        #     some_labels=eval_labels
+        # )
         print 'average: P@5: {} P@10: {} R@5: {} R@10: {} UBP@5: {} UBP@10: {} MAP: {}'.format(
             ev.Precision(5), ev.Precision(10), ev.Recall(5), ev.Recall(10), ev.upper_bound(5), ev.upper_bound(10),
             ev.MeanAveragePrecision()
         )
+
+        """------------------------------------------remove ill evaluation-------------------------------------------"""
+        print 'outputs before ', outputs.shape
+        eval_labels = []
+        for label in range(targets.shape[1]):
+            if (targets[:, label] == np.ones(targets.shape[0])).any():
+                eval_labels.append(label)
+        print '\n{} labels out of {} will be evaluated (zero-sampled-labels removed).'.format(len(eval_labels), targets.shape[1])
+        outputs, targets = outputs[:, eval_labels], targets[:, eval_labels]
+        print 'outputs after ', outputs.shape
+        predictions = np.where(outputs > 0.5, np.ones_like(outputs), np.zeros_like(outputs))
+        ev = Evaluation(outputs, predictions, targets)
+        print 'precision recall f1 macro: {}'.format(ev.precision_recall_fscore('macro'))
+        print 'precision recall f1 micro: {}'.format(ev.precision_recall_fscore('micro'))
+
         return query_ids, all_rankedat10_tags, list(all_Pat5), list(all_Pat10), list(all_Rat5), list(all_Rat10), \
                upper_bounds_pat5, upper_bounds_pat10, all_MAP
 
@@ -129,14 +155,12 @@ class TPAPI:
                 f.write('{} _ {} {} {} _\n'.format(qid, t_id, t_rank, t_score))
 
 
-def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None):
+def create_batches(df, ids_corpus, data_type, batch_size, padding_id):
 
     df = df[df['type'] == data_type]
     data_ids = df['id'].values
 
-    if perm is None:  # if no given order (i.e. perm), make a shuffle-random one.
-        perm = range(len(data_ids))
-        random.shuffle(perm)
+    # NO SHUFFLING FOR EVALUATION TO PRINT IN THE SAME ORDER
 
     N = len(data_ids)
 
@@ -146,7 +170,7 @@ def create_batches(df, ids_corpus, data_type, batch_size, padding_id, perm=None)
     ids = []
 
     for u in xrange(N):
-        i = perm[u]
+        i = u
         q_id = data_ids[i]
         title, body, tag = ids_corpus[str(q_id)]  # tag is boolean vector
         cnt += 1

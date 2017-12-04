@@ -22,8 +22,13 @@ from Queue import Full
 from multiprocessing import Queue, Pool
 import itertools
 from multiprocessing import freeze_support
+from evaluation import print_matrix
+
 
 logging.basicConfig(level=logging.INFO)
+
+
+TOP50LABELS = [u'12.04',u'installation', u'boot', u'unity', u'14.04', u'wireless', u'networking', u'command-line', u'dual-boot', u'11.10', u'drivers', u'server', u'12.10', u'grub2', u'13.04', u'13.10', u'gnome', u'apt', u'partitioning', u'nvidia', u'upgrade', u'sound',u'11.04',u'usb', u'system-installation', u'windows', u'kernel', u'updates', u'ati', u'bash', u'mount', u'graphics', u'software-recommendation', u'10.04', u'xubuntu', u'permissions', u'10.10', u'nautilus', u'virtualbox', u'keyboard', u'windows-7', u'xorg', u'software-installation', u'lubuntu',u'wine', u'firefox', u'hard-drive', u'shortcut-keys', u'software-center', u'ssh']
 
 
 def read_df(df_file, chunk_size=None, read_columns=None):
@@ -167,7 +172,7 @@ class TagTermComponent(object):
         return np.array(y_scores)
 
 
-def evaluate(test_y, y_scores, verbose=0):
+def evaluate(test_y, y_scores, verbose=0, tag_names=None):
     """------------------------------------------remove ill evaluation-------------------------------------------"""
     # eval_labels = []
     # for label in range(test_y.shape[1]):
@@ -182,6 +187,21 @@ def evaluate(test_y, y_scores, verbose=0):
     # test_y, y_scores = test_y[:, eval_labels], y_scores[:, eval_labels]
 
     ev = Evaluation(y_scores, None, test_y)
+
+    EVAL_LABELS = set()
+    for sample_id, sample_scores in zip(eval_samples, y_scores):
+        cols = np.argsort(sample_scores)[-10:]
+        for col in cols[::-1]:
+            label_name = tag_names[col]
+            EVAL_LABELS.add(label_name)
+    mat = ev.ConfusionMatrix(5)
+    eval_labels = list(EVAL_LABELS & set(TOP50LABELS))
+    print_matrix(
+        mat,
+        tag_names,
+        'Confusion:True Tag on x-axis, False Tag on y-axis',
+        some_labels=eval_labels,
+    )
 
     if verbose:
         print 'P@1: {}\tP@3: {}\tP@5: {}\tP@10: {}\tR@1: {}\tR@3: {}\tR@5: {}\tR@10: {}\tUBP@5: {}\tUBP@10: {}\tMAP: {}\n'.format(
@@ -294,7 +314,7 @@ def effective_weights(x_train, y_train, x_dev, y_dev, njobs=3):   # , sample_siz
         print 'best combo: {}'.format(sorted_results[0])
         return sorted_results[0][0], tt, mlr, sim
 
-    return (0.1, 1.0, 0), tt, mlr, sim
+    return (0.1, 1.0, 0), tt, mlr, sim  # FOUND ALREADY
 
 
 def api(label_tags, test_y, y_scores, all_ids):
@@ -384,14 +404,14 @@ def main():
     tt_probs = tt.predict_proba(x_dev)
     probs = alpha*mlr_probs + beta*sim_probs + gama*tt_probs
     print 'dev evaluation: '
-    evaluate(y_dev, probs, 1)
+    evaluate(y_dev, probs, 1, label_tags)
 
     mlr_probs = mlr.predict_proba(x_test)
     sim_probs = sim.predict_proba(x_test)
     tt_probs = tt.predict_proba(x_test)
     probs = alpha*mlr_probs + beta*sim_probs + gama*tt_probs
     print 'test evaluation: '
-    evaluate(y_test, probs, 1)
+    evaluate(y_test, probs, 1, label_tags)
 
     if args.results_file:
         api(label_tags, y_test, probs, x_ids)

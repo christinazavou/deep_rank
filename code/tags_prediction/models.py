@@ -57,7 +57,7 @@ class ModelMultiTagsClassifier(object):
         return dict_norms
 
     def _initialize_output_graph(self):
-
+        print 'FORGOT THE DROPOUT'
         with tf.name_scope('outputs'):
 
             if self.args.mlp_dim != 0:
@@ -76,6 +76,7 @@ class ModelMultiTagsClassifier(object):
                     # without activation is equivalent to SLP i.e. non linear
                     # act_layer_1 = get_activation_by_name(self.args.activation)(layer_1)
                     act_layer_1 = tf.nn.relu(layer_1)  # to reduce training time
+                    act_layer_1 = tf.nn.dropout(act_layer_1, 1-self.dropout_prob)
 
                     w_o, b_o = init_w_b_vals([self.args.mlp_dim, self.output_dim], [self.output_dim], self.args.activation)
                     weights_o, biases_o = tf.Variable(w_o, name='weights_o'), tf.Variable(b_o, name='bias_o')
