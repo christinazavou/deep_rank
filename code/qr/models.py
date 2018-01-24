@@ -8,8 +8,8 @@ from prettytable import PrettyTable
 from myio import say
 import myio
 import os
-from losses import loss0, loss1, loss2, loss0sum, loss2sum
-from losses import devloss0, devloss1, devloss2, devloss0sum, devloss2sum
+from losses import loss0, loss1, loss2
+from losses import devloss0, devloss1, devloss2
 from losses import dev_entropy_loss
 
 
@@ -79,22 +79,12 @@ class ModelQR(object):
                     pos_weight = 1.  # allows one to trade off recall and precision
                     self.loss = (tf.reduce_mean(x_entropy_pos)*pos_weight + tf.reduce_mean(x_entropy_neg))*0.5
                 else:
-                    if 'loss' in self.args and self.args.loss == 'loss1':
+                    if 'loss' in self.args and self.args.loss == 1:
                         self.loss = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # OK
-                        # self.loss1 = loss0(pos_scores, all_neg_scores)  # alternative 1
-                        # self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
-                    elif 'loss' in self.args and self.args.loss == 'loss2':
+                    elif 'loss' in self.args and self.args.loss == 2:
                         self.loss = loss2(pos_scores, all_neg_scores)  # OK
-                        # self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
-                        # self.loss2 = loss0(pos_scores, all_neg_scores)  # alternative 2
-                    elif 'loss' in self.args and self.args.loss == 'loss2sum':
-                        self.loss = loss2sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
-                    elif 'loss' in self.args and self.args.loss == 'loss0sum':
-                        self.loss = loss0sum(pos_scores, all_neg_scores, self.query_per_pair)  # OK
                     else:
                         self.loss = loss0(pos_scores, all_neg_scores)  # OK
-                        # self.loss1 = loss1(pos_scores, all_neg_scores, self.query_per_pair)  # alternative 1
-                        # self.loss2 = loss2(pos_scores, all_neg_scores)  # alternative 2
 
             with tf.name_scope('regularization'):
                 l2_reg = 0.
@@ -108,17 +98,19 @@ class ModelQR(object):
     # [tuples_num, hidden_dim],[tuples_num, hidden_dim], [tuples_num, 20, hidden_dim]
     def mlp(self, queries_vec, positives_vec, negatives_vec):
 
+        left = np.random.random() < 0.5
+
         # [tuples_num, 20, hidden_dim]
         q_exp = tf.tile(tf.reshape(queries_vec, (-1, 1, self.args.hidden_dim)), (1, 20, 1))
 
         # [tuples_num, hidden_dim*2]
-        if np.random.random() < 0.5:
+        if left:
             q_vec_p_vec = tf.reshape(tf.stack([queries_vec, positives_vec], axis=1), (-1, 2*self.args.hidden_dim))
         else:
             q_vec_p_vec = tf.reshape(tf.stack([positives_vec, queries_vec], axis=1), (-1, 2 * self.args.hidden_dim))  # REV.
 
         # [tuples_num*20, hidden_dim*2]
-        if np.random.random() < 0.5:
+        if left:
             q_vecs_n_vecs = tf.reshape(tf.concat([q_exp, negatives_vec], axis=2), (-1, 2*self.args.hidden_dim))
         else:
             q_vecs_n_vecs = tf.reshape(tf.concat([negatives_vec, q_exp], axis=2), (-1, 2 * self.args.hidden_dim))  # REV.
@@ -221,6 +213,7 @@ class ModelQR(object):
             [
                 train_op, global_step, self.loss, self.cost,
                 # self.pos_scores, self.all_neg_scores
+                # self.loss0, self.loss1, self.loss2
             ],
             feed_dict={
                 self.titles_words_ids_placeholder: titles.T,  # IT IS TRANSPOSE ;)
@@ -232,7 +225,7 @@ class ModelQR(object):
             }
         )
         # print 'pos neg ', np.max(pos), np.min(pos), np.max(neg), np.min(neg)
-        return _step, _loss, _cost, None, None, None, None, None, None
+        return _step, _loss, _cost
 
     def train_model(self, ids_corpus, train, dev=None, test=None):
         with tf.Session() as sess:
@@ -272,26 +265,6 @@ class ModelQR(object):
             train_cost_writer = tf.summary.FileWriter(
                 os.path.join(self.args.save_dir, "summaries", "train", "cost"), sess.graph
             )
-
-            # train_loss1_writer = tf.summary.FileWriter(
-            #     os.path.join(self.args.save_dir, "summaries", "train", "loss1"),
-            # )
-            # train_loss2_writer = tf.summary.FileWriter(
-            #     os.path.join(self.args.save_dir, "summaries", "train", "loss2"),
-            # )
-
-            # train_map_writer = tf.summary.FileWriter(
-            #     os.path.join(self.args.save_dir, "summaries", "train", "map"),
-            # )
-            # train_mrr_writer = tf.summary.FileWriter(
-            #     os.path.join(self.args.save_dir, "summaries", "train", "mrr"),
-            # )
-            # train_pat1_writer = tf.summary.FileWriter(
-            #     os.path.join(self.args.save_dir, "summaries", "train", "pat1"),
-            # )
-            # train_pat5_writer = tf.summary.FileWriter(
-            #     os.path.join(self.args.save_dir, "summaries", "train", "pat5"),
-            # )
 
             # VARIABLE NORM
             p_norm_summaries = {}
@@ -360,7 +333,7 @@ class ModelQR(object):
 
                 for i in xrange(N):
                     idts, idbs, idps, qpp = train_batches[i]
-                    cur_step, cur_loss, cur_cost, curmap, curmrr, curpat1, curpat5, curloss1, curloss2 = self.train_batch(
+                    cur_step, cur_loss, cur_cost = self.train_batch(
                         idts, idbs, idps, qpp, train_op, global_step, sess
                     )
                     summary = sess.run(loss_summary, {loss: cur_loss})
@@ -369,26 +342,6 @@ class ModelQR(object):
                     summary = sess.run(cost_summary, {cost: cur_cost})
                     train_cost_writer.add_summary(summary, cur_step)
                     train_cost_writer.flush()
-
-                    # summary = sess.run(loss_summary, {loss: curloss1})
-                    # train_loss1_writer.add_summary(summary, cur_step)
-                    # train_loss1_writer.flush()
-                    # summary = sess.run(loss_summary, {loss: curloss2})
-                    # train_loss2_writer.add_summary(summary, cur_step)
-                    # train_loss2_writer.flush()
-
-                    # summary = sess.run(train_summary, {train_eval: curmap})
-                    # train_map_writer.add_summary(summary, cur_step)
-                    # train_map_writer.flush()
-                    # summary = sess.run(train_summary, {train_eval: curmrr})
-                    # train_mrr_writer.add_summary(summary, cur_step)
-                    # train_mrr_writer.flush()
-                    # summary = sess.run(train_summary, {train_eval: curpat1})
-                    # train_pat1_writer.add_summary(summary, cur_step)
-                    # train_pat1_writer.flush()
-                    # summary = sess.run(train_summary, {train_eval: curpat5})
-                    # train_pat5_writer.add_summary(summary, cur_step)
-                    # train_pat5_writer.flush()
 
                     train_loss += cur_loss
                     train_cost += cur_cost
@@ -543,7 +496,10 @@ class ModelQR(object):
         return total_parameters
 
 
-class LstmQR(ModelQR):
+"""--------------------------------------------------RNN MODELS------------------------------------------------------"""
+
+
+class RNNQR(ModelQR):
 
     def __init__(self, args, embedding_layer, weights=None):
         self.args = args
@@ -557,6 +513,47 @@ class LstmQR(ModelQR):
             self.init_assign_ops = {self.embeddings: assign_op}
         else:
             self.init_assign_ops = {}
+
+    def _find_sequence_length(self, ids):
+        s = tf.not_equal(ids, self.padding_id)
+        s = tf.cast(s, tf.int32)
+        s = tf.reduce_sum(s, axis=1)
+        return s
+
+    def average_without_padding(self, x, ids, eps=1e-8):
+        # len*batch*1
+        mask = tf.not_equal(ids, self.padding_id)
+        mask = tf.expand_dims(mask, 2)
+        mask = tf.cast(mask, tf.float32)
+        # batch*d
+        s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
+        return s
+
+    def maximum_without_padding(self, x, ids):
+
+        def tf_repeat(tensor, repeats):
+            expanded_tensor = tf.expand_dims(tensor, -1)
+            multiples = [1] + repeats
+            tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
+            repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
+            return repeated_tensor
+
+        # len*batch*1
+        mask = tf.not_equal(ids, self.padding_id)
+        condition = tf.reshape(tf_repeat(mask, [1, tf.shape(x)[2]]), tf.shape(x))
+
+        smallest = tf.ones_like(x)*(-100000)
+
+        # batch*d
+        s = tf.where(condition, x, smallest)
+        m = tf.reduce_max(s, 1)
+        return m
+
+
+"""--------------------------------------------------LSTM MODEL------------------------------------------------------"""
+
+
+class LstmQR(RNNQR):
 
     def _initialize_encoder_graph(self):
 
@@ -645,56 +642,93 @@ class LstmQR(ModelQR):
             h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
             self.h_final = self.normalize_2d(h_final)
 
-    def _find_sequence_length(self, ids):
-        s = tf.not_equal(ids, self.padding_id)
-        s = tf.cast(s, tf.int32)
-        s = tf.reduce_sum(s, axis=1)
-        return s
 
-    def average_without_padding(self, x, ids, eps=1e-8):
-        # len*batch*1
-        mask = tf.not_equal(ids, self.padding_id)
-        mask = tf.expand_dims(mask, 2)
-        mask = tf.cast(mask, tf.float32)
-        # batch*d
-        s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
-        return s
-
-    def maximum_without_padding(self, x, ids):
-
-        def tf_repeat(tensor, repeats):
-            expanded_tensor = tf.expand_dims(tensor, -1)
-            multiples = [1] + repeats
-            tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
-            repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
-            return repeated_tensor
-
-        # len*batch*1
-        mask = tf.not_equal(ids, self.padding_id)
-        condition = tf.reshape(tf_repeat(mask, [1, tf.shape(x)[2]]), tf.shape(x))
-
-        smallest = tf.ones_like(x)*(-100000)
-
-        # batch*d
-        s = tf.where(condition, x, smallest)
-        m = tf.reduce_max(s, 1)
-        return m
+"""--------------------------------------------------GRU MODEL-------------------------------------------------------"""
 
 
-class BiRNNQR(ModelQR):
+class GruQR(RNNQR):
 
-    def __init__(self, args, embedding_layer, weights=None):
-        self.args = args
-        self.embedding_layer = embedding_layer
-        self.embeddings = embedding_layer.embeddings
-        self.padding_id = embedding_layer.vocab_map["<padding>"]
-        self.weights = weights
-        self.params = {}
-        if embedding_layer.init_embeddings is not None:
-            assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
-            self.init_assign_ops = {self.embeddings: assign_op}
-        else:
-            self.init_assign_ops = {}
+    def _initialize_encoder_graph(self):
+
+        self.SLT = self._find_sequence_length(self.titles_words_ids_placeholder)
+        self.SLB = self._find_sequence_length(self.bodies_words_ids_placeholder)
+
+        with tf.name_scope('embeddings'):
+            self.titles = tf.nn.embedding_lookup(self.embeddings, self.titles_words_ids_placeholder)
+            self.bodies = tf.nn.embedding_lookup(self.embeddings, self.bodies_words_ids_placeholder)
+
+            if self.weights is not None:
+                titles_weights = tf.nn.embedding_lookup(self.weights, self.titles_words_ids_placeholder)
+                titles_weights = tf.expand_dims(titles_weights, axis=2)
+                self.titles = self.titles * titles_weights
+
+                bodies_weights = tf.nn.embedding_lookup(self.weights, self.bodies_words_ids_placeholder)
+                bodies_weights = tf.expand_dims(bodies_weights, axis=2)
+                self.bodies = self.bodies * bodies_weights
+
+            self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
+            self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
+
+        with tf.name_scope('GRU'):
+
+            def gru_cell():
+                _cell = tf.nn.rnn_cell.GRUCell(
+                    self.args.hidden_dim, activation=get_activation_by_name(self.args.activation)
+                )
+                # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
+                return _cell
+
+            cell = tf.nn.rnn_cell.MultiRNNCell(
+                [gru_cell() for _ in range(self.args.depth)]
+            )
+
+        with tf.name_scope('titles_output'):
+            self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(
+                cell,
+                self.titles,
+                dtype=tf.float32,
+                sequence_length=self.SLT
+            )
+
+            if self.args.normalize:
+                self.t_states_series = self.normalize_3d(self.t_states_series)
+
+            if self.args.average == 1:
+                self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
+            elif self.args.average == 0:
+                self.t_state = self.t_current_state[0]
+            else:
+                self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
+
+        with tf.name_scope('bodies_output'):
+            self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
+                cell,
+                self.bodies,
+                dtype=tf.float32,
+                sequence_length=self.SLB
+            )
+
+            if self.args.normalize:
+                self.b_states_series = self.normalize_3d(self.b_states_series)
+
+            if self.args.average == 1:
+                self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
+            elif self.args.average == 0:
+                self.b_state = self.b_current_state[0]
+            else:
+                self.b_state = self.maximum_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
+
+        with tf.name_scope('outputs'):
+            # batch * d
+            h_final = (self.t_state + self.b_state) * 0.5
+            h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
+            self.h_final = self.normalize_2d(h_final)
+
+
+"""--------------------------------------------------BiRNN MODELS----------------------------------------------------"""
+
+
+class BiRNNQR(RNNQR):
 
     def _initialize_encoder_graph(self):
 
@@ -836,41 +870,6 @@ class BiRNNQR(ModelQR):
             h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
             self.h_final = self.normalize_2d(h_final)
 
-    def _find_sequence_length(self, ids):
-        s = tf.not_equal(ids, self.padding_id)
-        s = tf.cast(s, tf.int32)
-        s = tf.reduce_sum(s, axis=1)
-        return s
-
-    def average_without_padding(self, x, ids, eps=1e-8):
-        # len*batch*1
-        mask = tf.not_equal(ids, self.padding_id)
-        mask = tf.expand_dims(mask, 2)
-        mask = tf.cast(mask, tf.float32)
-        # batch*d
-        s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
-        return s
-
-    def maximum_without_padding(self, x, ids):
-
-        def tf_repeat(tensor, repeats):
-            expanded_tensor = tf.expand_dims(tensor, -1)
-            multiples = [1] + repeats
-            tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
-            repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
-            return repeated_tensor
-
-        # len*batch*1
-        mask = tf.not_equal(ids, self.padding_id)
-        condition = tf.reshape(tf_repeat(mask, [1, tf.shape(x)[2]]), tf.shape(x))
-
-        smallest = tf.ones_like(x)*(-100000)
-
-        # batch*d
-        s = tf.where(condition, x, smallest)
-        m = tf.reduce_max(s, 1)
-        return m
-
 
 class CnnQR(ModelQR):
 
@@ -1002,130 +1001,3 @@ class CnnQR(ModelQR):
             h_final = (self.t_state + self.b_state) * 0.5
             h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
             self.h_final = self.normalize_2d(h_final)
-
-
-class GruQR(ModelQR):
-
-    def __init__(self, args, embedding_layer, weights=None):
-        self.args = args
-        self.embedding_layer = embedding_layer
-        self.embeddings = embedding_layer.embeddings
-        self.padding_id = embedding_layer.vocab_map["<padding>"]
-        self.weights = weights
-        self.params = {}
-        if embedding_layer.init_embeddings is not None:
-            assign_op = tf.assign(self.embeddings, embedding_layer.init_embeddings)
-            self.init_assign_ops = {self.embeddings: assign_op}
-        else:
-            self.init_assign_ops = {}
-
-    def _initialize_encoder_graph(self):
-
-        self.SLT = self._find_sequence_length(self.titles_words_ids_placeholder)
-        self.SLB = self._find_sequence_length(self.bodies_words_ids_placeholder)
-
-        with tf.name_scope('embeddings'):
-            self.titles = tf.nn.embedding_lookup(self.embeddings, self.titles_words_ids_placeholder)
-            self.bodies = tf.nn.embedding_lookup(self.embeddings, self.bodies_words_ids_placeholder)
-
-            if self.weights is not None:
-                titles_weights = tf.nn.embedding_lookup(self.weights, self.titles_words_ids_placeholder)
-                titles_weights = tf.expand_dims(titles_weights, axis=2)
-                self.titles = self.titles * titles_weights
-
-                bodies_weights = tf.nn.embedding_lookup(self.weights, self.bodies_words_ids_placeholder)
-                bodies_weights = tf.expand_dims(bodies_weights, axis=2)
-                self.bodies = self.bodies * bodies_weights
-
-            self.titles = tf.nn.dropout(self.titles, 1.0 - self.dropout_prob)
-            self.bodies = tf.nn.dropout(self.bodies, 1.0 - self.dropout_prob)
-
-        with tf.name_scope('GRU'):
-
-            def gru_cell():
-                _cell = tf.nn.rnn_cell.GRUCell(
-                    self.args.hidden_dim, activation=get_activation_by_name(self.args.activation)
-                )
-                # _cell = tf.nn.rnn_cell.DropoutWrapper(_cell, output_keep_prob=0.5)
-                return _cell
-
-            cell = tf.nn.rnn_cell.MultiRNNCell(
-                [gru_cell() for _ in range(self.args.depth)]
-            )
-
-        with tf.name_scope('titles_output'):
-            self.t_states_series, self.t_current_state = tf.nn.dynamic_rnn(
-                cell,
-                self.titles,
-                dtype=tf.float32,
-                sequence_length=self.SLT
-            )
-
-            if self.args.normalize:
-                self.t_states_series = self.normalize_3d(self.t_states_series)
-
-            if self.args.average == 1:
-                self.t_state = self.average_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
-            elif self.args.average == 0:
-                self.t_state = self.t_current_state[0]
-            else:
-                self.t_state = self.maximum_without_padding(self.t_states_series, self.titles_words_ids_placeholder)
-
-        with tf.name_scope('bodies_output'):
-            self.b_states_series, self.b_current_state = tf.nn.dynamic_rnn(
-                cell,
-                self.bodies,
-                dtype=tf.float32,
-                sequence_length=self.SLB
-            )
-
-            if self.args.normalize:
-                self.b_states_series = self.normalize_3d(self.b_states_series)
-
-            if self.args.average == 1:
-                self.b_state = self.average_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
-            elif self.args.average == 0:
-                self.b_state = self.b_current_state[0]
-            else:
-                self.b_state = self.maximum_without_padding(self.b_states_series, self.bodies_words_ids_placeholder)
-
-        with tf.name_scope('outputs'):
-            # batch * d
-            h_final = (self.t_state + self.b_state) * 0.5
-            h_final = tf.nn.dropout(h_final, 1.0 - self.dropout_prob)
-            self.h_final = self.normalize_2d(h_final)
-
-    def _find_sequence_length(self, ids):
-        s = tf.not_equal(ids, self.padding_id)
-        s = tf.cast(s, tf.int32)
-        s = tf.reduce_sum(s, axis=1)
-        return s
-
-    def average_without_padding(self, x, ids, eps=1e-8):
-        # len*batch*1
-        mask = tf.not_equal(ids, self.padding_id)
-        mask = tf.expand_dims(mask, 2)
-        mask = tf.cast(mask, tf.float32)
-        # batch*d
-        s = tf.reduce_sum(x*mask, axis=1) / (tf.reduce_sum(mask, axis=1)+eps)
-        return s
-
-    def maximum_without_padding(self, x, ids):
-
-        def tf_repeat(tensor, repeats):
-            expanded_tensor = tf.expand_dims(tensor, -1)
-            multiples = [1] + repeats
-            tiled_tensor = tf.tile(expanded_tensor, multiples=multiples)
-            repeated_tensor = tf.reshape(tiled_tensor, tf.shape(tensor) * repeats)
-            return repeated_tensor
-
-        # len*batch*1
-        mask = tf.not_equal(ids, self.padding_id)
-        condition = tf.reshape(tf_repeat(mask, [1, tf.shape(x)[2]]), tf.shape(x))
-
-        smallest = tf.ones_like(x)*(-100000)
-
-        # batch*d
-        s = tf.where(condition, x, smallest)
-        m = tf.reduce_max(s, 1)
-        return m

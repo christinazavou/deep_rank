@@ -13,7 +13,7 @@ COLORS = ['r', 'g', 'b', 'y', 'k']
 MARKERS = ['o', 's', '+', '*', '^']
 
 
-def error_plot_all_metrics(mean_values, std_values, x_ticks, labels, title=None):
+def error_plot_all_metrics(mean_values, std_values, x_ticks, labels, title=None, sinplin=5.):
 
     colors = COLORS[:len(labels)]
     markers = MARKERS[:len(labels)]
@@ -22,8 +22,8 @@ def error_plot_all_metrics(mean_values, std_values, x_ticks, labels, title=None)
     fig = plt.figure()
     ax = fig.add_subplot(111)
     plt.xticks(x_axis, x_ticks)
-    y_min = np.min(np.array(mean_values)) - 5.
-    y_max = np.max(np.array(mean_values)) + 5.
+    y_min = np.min(np.array(mean_values)) - sinplin
+    y_max = np.max(np.array(mean_values)) + sinplin
     plt.ylim([y_min, y_max])
 
     if title:
@@ -40,30 +40,6 @@ def error_plot_all_metrics(mean_values, std_values, x_ticks, labels, title=None)
     ax.legend(handles, labels, loc='upper left', numpoints=1)
 
     plt.show()
-
-#
-# def error_plot_one_metric(mean_values, std_values, models, labels, metric):
-#
-#     colors = COLORS[:len(labels)]
-#     markers = MARKERS[:len(models)]
-#
-#     x_axis = range(len(models))
-#     fig = plt.figure()
-#     ax = fig.add_subplot(111)
-#     ax.set_ylabel(metric)
-#     plt.ylim([0, 100])
-#
-#     for color_i, mean_values_i, std_values_i, label_i in zip(colors, mean_values, std_values, labels):
-#         for x, model, mean_value, std_value, marker in zip(x_axis, models, mean_values_i, std_values_i, markers):
-#             ax.errorbar(
-#                 x, mean_value, yerr=std_value, color=color_i, label='{}_{}'.format(label_i, model), marker=marker
-#             )
-#
-#     handles, labels = ax.get_legend_handles_labels()
-#     handles = [h[0] for h in handles]
-#     ax.legend(handles, labels, loc='upper left', numpoints=1)
-#
-#     plt.show()
 
 
 """-------------------------------------------------TP-----------------------------------------------------------"""
@@ -88,27 +64,6 @@ error_plot_all_metrics(mean_values_, std_values_, x_ticks_, labels_, title_)
 """-------------------------------------------------TP-----------------------------------------------------------"""
 
 
-"""----------------------------------------------TP crossval--------------------------------------------------------"""
-mean_values_ = [
-    [24.76,	15.90,	54.37,	68.33],  # TagCombine
-    [32.76,	19.14,	71.68,	81.97],  # LogReg
-    [32.82,	19.21,	71.49,	82.08],  # CNN
-    [31.75,	18.64,	69.75,	80.25],  # LSTM
-    [31.96,	18.78,	69.79,	80.38],  # GRU
-]
-std_values_ = [
-    [0.52,	0.10,	1.14,	0.44],  # TagCombine
-    [0.05,	0.04,	0.07,	0.01],  # LogReg
-    [0.03,  0.05,   0.10,   0.20],  # CNN
-    [0.04,	0.02,	0.21,	0.25],  # LSTM
-    [0.08,	0.04,	0.03,	0.02],  # GRU
-]
-x_ticks_ = ['P@5', 'P@10', 'R@5', 'R@10']
-labels_ = ['TagCombine', 'LogisticRegression', 'CNN', 'LSTM', 'GRU']
-title_ = 'Cross Validation'
-error_plot_all_metrics(mean_values_, std_values_, x_ticks_, labels_, title_)
-"""----------------------------------------------TP crossval--------------------------------------------------------"""
-
 """-------------------------------------------------QR-----------------------------------------------------------"""
 mean_values_ = [
     [56.63,	71.13,	56.99,	43.60],  # CNN
@@ -129,6 +84,7 @@ labels_ = ['CNN', 'LSTM', 'GRU', 'BiLSTM', 'BiGRU']
 title_ = 'Mean Average Precision'
 error_plot_all_metrics(mean_values_, std_values_, x_ticks_, labels_, title_)
 """-------------------------------------------------QR-----------------------------------------------------------"""
+
 
 """-----------------------------------------------QR various---------------------------------------------------------"""
 x_ticks_ = ['QR', 'QRptTP', 'MTL']

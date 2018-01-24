@@ -282,9 +282,6 @@ def make_truncate(data_frame):
         text = row['body'].split(u' ')[0:100]
         data_frame.set_value(idx, 'body_truncated', u' '.join(text))
 
-    # for idx, row in df.iterrows():
-    #     print row['body']
-    #     print row['body_truncated']
     return data_frame
 
 

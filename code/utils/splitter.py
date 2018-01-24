@@ -1,15 +1,6 @@
 import matplotlib.pyplot as plt
 import pandas as pd
-
-
-def str2int_list(str_list):
-    result = []
-    try:
-        result = [int(item) for item in str_list]
-    except:
-        # print('except: {}\n'.format(str_list))
-        pass
-    return result
+from utils import read_df, str2int_list
 
 
 def read_eval_rows(eval_file):  # test or dev
@@ -32,24 +23,6 @@ def read_eval_rows(eval_file):  # test or dev
                 q_ids_similar = str2int_list(q_ids_similar)
                 q_ids_candidates = str2int_list(q_ids_candidates)
             yield int(q_id), q_ids_similar, q_ids_candidates
-
-
-def read_df(df_file, chunk_size=None, read_columns=None):
-    if '.csv' in df_file:
-        if chunk_size:
-            return pd.read_csv(df_file, encoding='utf8', index_col=0, chunksize=chunk_size)
-        else:
-            if read_columns:
-                return pd.read_csv(df_file, encoding='utf8', index_col=0, usecols=read_columns)
-            else:
-                return pd.read_csv(df_file, encoding='utf8', index_col=0)
-    elif '.p' in df_file:
-        if read_columns:
-            return pd.read_pickle(df_file)[read_columns]
-        else:
-            return pd.read_pickle(df_file)
-    else:
-        raise Exception(' unknown pandas file {}'.format(df_file))
 
 
 def get_eval_ids(eval_rows):
@@ -106,18 +79,6 @@ def make_data_frame_for_tag_training(data_frame, test, dev):
     print df[df['type'] == 'train'].shape
 
     return data_frame
-
-
-# def remake_training_file_for_question_ranking(train_rows, q_ids_in_eval, out_file):
-#     with open(out_file, 'w') as f:
-#         for x in train_rows:
-#             if x[0] in q_ids_in_eval:
-#                 continue
-#             q_ids_similar = [q_id_sim for q_id_sim in x[1] if q_id_sim not in q_ids_in_eval]
-#             q_ids_candidates = [q_id_cand for q_id_cand in x[2] if q_id_cand not in q_ids_in_eval]
-#             q_ids_similar = " ".join([str(q) for q in q_ids_similar])
-#             q_ids_candidates = " ".join([str(q) for q in q_ids_candidates])
-#             f.write('{}\t{}\t{}\n'.format(str(x[0]), q_ids_similar, q_ids_candidates))
 
 
 def remake_training_file_for_question_ranking(new_train_rows, out_file):

@@ -111,7 +111,7 @@ if __name__ == "__main__":
     argparser.add_argument("--reweight", type=int, default=0)
     argparser.add_argument("--layer", type=str, default="lstm")
     argparser.add_argument("--concat", type=int, default=0)
-    argparser.add_argument("--loss", type=str, default="loss0")
+    argparser.add_argument("--loss", type=int, default=0)
     argparser.add_argument("--weight", type=float, default=1.)
     argparser.add_argument("--mlp_dim", type=int, default=0)
     argparser.add_argument("--mlp_dim2", type=int, default=0)
